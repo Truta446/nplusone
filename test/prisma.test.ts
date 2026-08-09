@@ -121,6 +121,42 @@ test("treats identical arguments as duplicates, not an N+1", async () => {
   assert.equal(findings.filter((f) => f.type === "duplicate").length, 1);
 });
 
+test("reports a raw query with its SQL rather than an opaque label", async () => {
+  const { client } = fakePrisma();
+  const prisma = instrumentPrisma(client) as unknown as {
+    $queryRaw: (a: unknown) => Promise<unknown>;
+  };
+  configure({ threshold: 1000 });
+
+  let recorded = "";
+  await runInScope("raw", async (scope) => {
+    // Prisma.Sql keeps the template chunks in `strings`.
+    await prisma.$queryRaw({
+      strings: ["SELECT * FROM users WHERE id = ", ""],
+      values: [1],
+    });
+    recorded = scope.queries[0]?.sql ?? "";
+  });
+
+  assert.equal(recorded, "SELECT * FROM users WHERE id = ?");
+});
+
+test("falls back to the operation label when raw SQL is unavailable", async () => {
+  const { client } = fakePrisma();
+  const prisma = instrumentPrisma(client) as unknown as {
+    $queryRaw: (a: unknown) => Promise<unknown>;
+  };
+  configure({ threshold: 1000 });
+
+  let recorded = "";
+  await runInScope("raw-opaque", async (scope) => {
+    await prisma.$queryRaw({ mystery: true });
+    recorded = scope.queries[0]?.sql ?? "";
+  });
+
+  assert.equal(recorded, "$queryRaw");
+});
+
 test("rejects anything without $extends", () => {
   assert.throws(
     () => instrumentPrisma({} as never),

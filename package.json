@@ -73,7 +73,8 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "tsc -p tsconfig.json && node --test \"dist-test/test/*.test.js\"",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "coverage": "tsc -p tsconfig.json && node --test --experimental-test-coverage \"dist-test/test/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

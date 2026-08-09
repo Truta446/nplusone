@@ -252,6 +252,11 @@ driver.execute = async function (sql, params) {
 
 Adapters for `postgres.js` and MongoDB are on the list. **Contributions very welcome** — the existing adapters in [`src/adapters/`](./src/adapters) are 100 lines each and share the helpers in `shared.ts`.
 
+```sh
+npm test          # 82 tests, including real queries against node:sqlite
+npm run coverage  # 96% lines, 94% functions
+```
+
 ## Cost
 
 The real expense is capturing a stack trace per query, which is why the detector is disabled when `NODE_ENV === "production"` unless you explicitly enable it. Set `captureStack: false` to keep detection while dropping the "which line" attribution — cheap enough to leave running in staging.
