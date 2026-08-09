@@ -82,9 +82,11 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | Your stack | Setup | |
 | --- | --- | :--: |
 | **PostgreSQL** (`pg`) | `instrumentPg(pg)` | ✅ |
+| **PostgreSQL** (`postgres.js`) | `instrumentPostgresJs(sql)` | ✅ |
 | **MySQL / MariaDB** (`mysql2`) | `instrumentMysql2(mysql)` | ✅ |
 | **SQLite** (`better-sqlite3`) | `instrumentBetterSqlite3(Database)` | ✅ |
 | **SQLite** (`node:sqlite`) | `instrumentNodeSqlite(sqlite)` | ✅ |
+| **MongoDB** | `instrumentMongodb(mongodb)` | ✅ |
 | **Prisma** | `instrumentPrisma(client)` | ✅ |
 | **Drizzle** | via its driver | ✅ |
 | **Knex** | via its driver | ✅ |
@@ -92,7 +94,8 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **MikroORM** | via its driver (Knex) | ✅ |
 | **Sequelize** | via its driver | ✅ |
 | **Kysely** | via its driver | ✅ |
-| **postgres.js**, **MongoDB**, anything else | [10 lines with `record()`](#other-drivers) | 🔧 |
+| **Mongoose** | via the MongoDB driver | ✅ |
+| Anything else | [10 lines with `record()`](#other-drivers) | 🔧 |
 
 > **Prisma is the exception worth knowing about.** By default it does not use `pg` or `mysql2` at all — it talks to the database through its own query engine, so driver-level instrumentation cannot see it. That is why it gets a dedicated adapter.
 
@@ -131,6 +134,24 @@ import * as sqlite from "node:sqlite";
 import { instrumentNodeSqlite } from "nplusone/sqlite";
 
 instrumentNodeSqlite(sqlite);
+```
+
+**postgres.js** — returns a *new* `sql`, since it is a function rather than an object. Use the returned one:
+
+```ts
+import postgres from "postgres";
+import { instrumentPostgresJs } from "nplusone/postgresjs";
+
+export const sql = instrumentPostgresJs(postgres(process.env.DATABASE_URL));
+```
+
+**MongoDB** — also covers Mongoose, which uses this driver underneath:
+
+```ts
+import * as mongodb from "mongodb";
+import { instrumentMongodb } from "nplusone/mongodb";
+
+instrumentMongodb(mongodb);
 ```
 
 **Prisma** — note that this returns a *new* client, because Prisma clients are immutable. Use the returned one:
@@ -250,11 +271,11 @@ driver.execute = async function (sql, params) {
 };
 ```
 
-Adapters for `postgres.js` and MongoDB are on the list. **Contributions very welcome** — the existing adapters in [`src/adapters/`](./src/adapters) are 100 lines each and share the helpers in `shared.ts`.
+**Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 82 tests, including real queries against node:sqlite
-npm run coverage  # 96% lines, 94% functions
+npm test          # 98 tests, including real queries against node:sqlite
+npm run coverage  # 96% lines, 95% functions
 ```
 
 ## Cost
@@ -271,7 +292,8 @@ Worth knowing before you file an issue:
 - **A legitimate batch loop** (a script importing rows one at a time) looks exactly like an N+1 from the driver's point of view. Use `statements: ["select"]` or `ignore` to quiet it.
 - **Cursors and streaming queries** (`pg.Cursor`, `pg-query-stream`) carry no statement text at the patch point and are not recorded.
 - **`AsyncLocalStorage` is required** for scope propagation. Code that breaks async context will report queries outside any scope, and you get one warning saying so.
-- **Prisma reports operations, not SQL** (`User.findUnique` rather than the generated query) — that's the call you would batch, so it's the more actionable label, but it is not the raw statement.
+- **Prisma and MongoDB report operations, not SQL** (`User.findUnique`, `users.findOne`) — that's the call you would batch, so it's the more actionable label, but it is not the raw statement.
+- **MongoDB cursors** (`find`, `aggregate`) are recorded when the cursor is created rather than when it is drained, so no duration is reported for them.
 
 ## License
 

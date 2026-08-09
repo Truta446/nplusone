@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
@@ -19,7 +19,9 @@
     "sequelize",
     "profiling",
     "database",
-    "query"
+    "query",
+    "mongodb",
+    "postgres.js"
   ],
   "license": "MIT",
   "author": "Juan Versolato <juan.versolato@outlook.com>",
@@ -67,7 +69,16 @@
     "./prisma": {
       "types": "./dist/adapters/prisma.d.ts",
       "import": "./dist/adapters/prisma.js"
-    }
+    },
+    "./postgresjs": {
+      "types": "./dist/adapters/postgresjs.d.ts",
+      "import": "./dist/adapters/postgresjs.js"
+    },
+    "./mongodb": {
+      "types": "./dist/adapters/mongodb.d.ts",
+      "import": "./dist/adapters/mongodb.js"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

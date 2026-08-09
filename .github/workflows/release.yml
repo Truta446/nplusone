@@ -1,0 +1,56 @@
+name: Release
+
+# Publishes to npm when a GitHub Release is created, or when triggered by hand.
+# The token lives in repository secrets, so it never touches a local machine.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # lets npm attach build provenance to the package
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      # npm versions are immutable: once 0.1.0 is published that number is
+      # burned forever, even after an unpublish. Fail here with a clear message
+      # rather than deep inside `npm publish` with a 403.
+      - name: Check the version is new
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          NAME=$(node -p "require('./package.json').name")
+          echo "Publishing $NAME@$VERSION"
+          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+            echo "::error::$NAME@$VERSION is already on npm. Bump the version first:"
+            echo "::error::  npm version patch|minor|major && git push --follow-tags"
+            exit 1
+          fi
+          echo "Version $VERSION is available."
+
+      # Never ship a release that does not pass its own suite.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
