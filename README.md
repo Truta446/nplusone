@@ -1,8 +1,8 @@
 <div align="center">
 
-# nplusone
+<img src="https://raw.githubusercontent.com/Truta446/nplusone/main/assets/banner.png" alt="nplusone — catch N+1 queries in Node.js at runtime, and fail your CI before they reach production" width="880">
 
-### Catch N+1 queries in Node.js at runtime — and fail your CI before they reach production.
+# nplusone
 
 [![npm version](https://img.shields.io/npm/v/nplusone?style=flat-square&color=cb3837)](https://www.npmjs.com/package/nplusone)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
