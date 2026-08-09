@@ -1,0 +1,63 @@
+name: Bug report
+description: Something is detected wrong, or not detected at all
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: if **nothing at all** is reported, the usual cause is a
+        missing scope. Detection counts repetition inside a window (a request, a
+        job, a test) — without one, queries are recorded outside any scope and
+        ignored. You should see a one-time warning on stderr saying exactly that.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What happened
+      options:
+        - Nothing was detected when it should have been
+        - Something was detected that is not a real problem
+        - The reported call site is wrong or missing
+        - Crash or error
+    validations:
+      required: true
+
+  - type: input
+    id: driver
+    attributes:
+      label: Driver / ORM and version
+      placeholder: "pg 8.16.3 + Drizzle 0.45.2"
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and framework
+      placeholder: "Node 22, Next.js 16 / NestJS 11 / Express 5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scoping
+    attributes:
+      label: How do you open a scope?
+      description: The middleware, `withRequestScope`, `runInScope`, or a test helper.
+      render: ts
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The smallest code that shows the problem.
+      render: ts
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: What you got vs what you expected
+      render: text

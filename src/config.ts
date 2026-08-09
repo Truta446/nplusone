@@ -1,3 +1,4 @@
+import { setShared, shared } from "./global-state.js";
 import type { Options, ResolvedOptions } from "./types.js";
 
 function defaults(): ResolvedOptions {
@@ -13,14 +14,21 @@ function defaults(): ResolvedOptions {
     onFinding: undefined,
     reporter: undefined,
     enabled: process.env["NODE_ENV"] !== "production",
+    includeTransactionControl: false,
   };
 }
 
-let current: ResolvedOptions = defaults();
+const KEY = "options";
+
+/** Shared across every copy of this module in the process. */
+function currentOptions(): ResolvedOptions {
+  return shared(KEY, defaults);
+}
 
 /** Merges `options` into the active configuration. */
 export function configure(options: Options): ResolvedOptions {
-  current = {
+  const current = currentOptions();
+  return setShared(KEY, {
     threshold: options.threshold ?? current.threshold,
     duplicateThreshold: options.duplicateThreshold ?? current.duplicateThreshold,
     mode: options.mode ?? current.mode,
@@ -32,12 +40,13 @@ export function configure(options: Options): ResolvedOptions {
     onFinding: options.onFinding ?? current.onFinding,
     reporter: options.reporter ?? current.reporter,
     enabled: options.enabled ?? current.enabled,
-  };
-  return current;
+    includeTransactionControl:
+      options.includeTransactionControl ?? current.includeTransactionControl,
+  });
 }
 
 export function getOptions(): ResolvedOptions {
-  return current;
+  return currentOptions();
 }
 
 /**
@@ -45,12 +54,10 @@ export function getOptions(): ResolvedOptions {
  * {@link getOptions}. Used to restore state after a temporary override.
  */
 export function restoreConfig(snapshot: ResolvedOptions): ResolvedOptions {
-  current = snapshot;
-  return current;
+  return setShared(KEY, snapshot);
 }
 
 /** Restores the built-in defaults. Mostly useful between tests. */
 export function resetConfig(): ResolvedOptions {
-  current = defaults();
-  return current;
+  return setShared(KEY, defaults());
 }

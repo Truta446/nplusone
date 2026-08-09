@@ -276,5 +276,10 @@ test("concurrent fetch handlers keep separate scopes", async () => {
   ]);
 
   // Three queries each, interleaved — under the threshold in both scopes.
-  assert.deepEqual(summaries, []);
+  // A custom reporter sees clean scopes too, so assert on the findings.
+  assert.equal(summaries.length, 2, "one summary per request");
+  assert.deepEqual(
+    summaries.flatMap((s) => s.findings),
+    [],
+  );
 });

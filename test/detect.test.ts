@@ -8,6 +8,7 @@ import {
   NPlusOneError,
   resetScopeWarning,
   type Finding,
+  statementKind,
 } from "../src/index.js";
 
 beforeEach(() => {
@@ -254,4 +255,105 @@ test("reports the scope summary once it closes", async () => {
 
   assert.equal(summaries.length, 1);
   assert.match(summaries[0]!, /^GET \/orders:1:6$/);
+});
+
+test("ignores transaction control by default", async () => {
+  // An ORM opens one transaction per write. Counting BEGIN/COMMIT as duplicated
+  // work buries the real findings — observed against a real NestJS login flow,
+  // where the only two findings were 3x START TRANSACTION and 3x COMMIT.
+  const findings: Finding[] = [];
+  configure({ threshold: 2, duplicateThreshold: 2, onFinding: (f) => findings.push(f) });
+
+  await runInScope("writes", () => {
+    for (let i = 0; i < 3; i++) {
+      record({ sql: "START TRANSACTION" });
+      record({ sql: "INSERT INTO t (a) VALUES ($1)", params: [i] });
+      record({ sql: "COMMIT" });
+    }
+  });
+
+  assert.deepEqual(
+    findings.filter((f) => /transaction|commit/i.test(f.normalized)),
+    [],
+    "transaction control must not be reported",
+  );
+  assert.ok(
+    findings.some((f) => f.normalized.startsWith("INSERT")),
+    "the actual repeated write should still be found",
+  );
+});
+
+test("counts transaction control when explicitly asked", async () => {
+  const findings: Finding[] = [];
+  configure({
+    duplicateThreshold: 2,
+    includeTransactionControl: true,
+    onFinding: (f) => findings.push(f),
+  });
+
+  await runInScope("explicit", () => {
+    record({ sql: "COMMIT" });
+    record({ sql: "COMMIT" });
+  });
+
+  assert.equal(findings.length, 1);
+});
+
+test("classifies the common control statements", () => {
+  for (const sql of [
+    "BEGIN",
+    "START TRANSACTION",
+    "COMMIT",
+    "ROLLBACK",
+    "SAVEPOINT sp1",
+    "RELEASE SAVEPOINT sp1",
+    "SET search_path TO public",
+    "DEALLOCATE ALL",
+  ]) {
+    assert.equal(statementKind(sql), "control", `${sql} should be control`);
+  }
+  // Not control: these move data.
+  assert.equal(statementKind("SELECT 1"), "select");
+  assert.equal(statementKind("INSERT INTO t VALUES (1)"), "insert");
+});
+
+test("a custom reporter sees clean scopes too", async () => {
+  // Query counts per request are useful even with nothing wrong; only the
+  // caller can decide whether to surface them.
+  const seen: { name: string; findings: number }[] = [];
+  configure({
+    threshold: 100,
+    mode: "warn",
+    reporter: (s) => seen.push({ name: s.name, findings: s.findings.length }),
+  });
+
+  await runInScope("clean", () => {
+    record({ sql: "SELECT 1" });
+  });
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0]!.findings, 0);
+});
+
+test("the default reporter stays quiet on a clean scope", async () => {
+  const written: string[] = [];
+  const original = process.stderr.write.bind(process.stderr);
+  // resetConfig clears any reporter left by an earlier test.
+  resetConfig();
+  configure({ threshold: 100, mode: "warn", enabled: true });
+
+  process.stderr.write = ((chunk: string) => {
+    written.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  try {
+    await runInScope("clean", () => {
+      record({ sql: "SELECT 1" });
+    });
+  } finally {
+    process.stderr.write = original;
+  }
+
+  assert.deepEqual(written, []);
 });

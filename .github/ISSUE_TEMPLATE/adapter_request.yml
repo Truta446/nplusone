@@ -1,0 +1,44 @@
+name: Adapter request
+description: Ask for support for a driver or ORM we do not cover
+labels: [adapter]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adapters are small — around 100 lines. If you would rather write it
+        yourself, `CONTRIBUTING.md` walks through it and `src/adapters/pg.ts` is
+        the simplest example to copy.
+
+        Note that most ORMs need **no** adapter: the detector hooks the driver,
+        so anything built on `pg`, `mysql2` or `better-sqlite3` already works.
+        Check the compatibility table in the README first.
+
+  - type: input
+    id: package
+    attributes:
+      label: Package name and version
+      placeholder: "@planetscale/database 1.19.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: usage
+    attributes:
+      label: How you issue a query with it
+      render: ts
+    validations:
+      required: true
+
+  - type: dropdown
+    id: laziness
+    attributes:
+      label: Does it execute lazily?
+      description: >
+        i.e. does `const q = db.select(...)` build a query that only runs when
+        awaited? This decides whether call site attribution needs extra work.
+      options:
+        - "No — calling the method runs the query"
+        - "Yes — it returns something that runs when awaited"
+        - "Not sure"
+    validations:
+      required: true

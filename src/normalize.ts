@@ -196,7 +196,21 @@ export type StatementKind =
   | "insert"
   | "update"
   | "delete"
+  /** Transaction control and session setup — never application queries. */
+  | "control"
   | "other";
+
+/**
+ * Statements that manage a transaction or session rather than move data.
+ *
+ * These have to be excluded by default. An ORM opens a transaction per write,
+ * so a handler doing three saves issues three identical `START TRANSACTION`
+ * and three identical `COMMIT` statements — which look exactly like duplicated
+ * work while being nothing of the sort. Reporting them buries the real
+ * findings under noise.
+ */
+const CONTROL_STATEMENT =
+  /^(begin|start\s+transaction|commit|rollback|savepoint|release\s+savepoint|set\s|reset\s|discard\s|listen\s|unlisten\s|deallocate\b|prepare\s+transaction)/i;
 
 /** Best-effort classification of a statement, used for filtering and display. */
 export function statementKind(sql: string): StatementKind {
@@ -217,6 +231,7 @@ export function statementKind(sql: string): StatementKind {
   if (head.startsWith("insert")) return "insert";
   if (head.startsWith("update")) return "update";
   if (head.startsWith("delete")) return "delete";
+  if (CONTROL_STATEMENT.test(head)) return "control";
   return "other";
 }
 

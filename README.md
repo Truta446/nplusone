@@ -289,7 +289,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 106 tests, including real queries against node:sqlite
+npm test          # 114 tests, including real queries against node:sqlite
 npm run coverage  # 96% lines, 95% functions
 ```
 
@@ -309,6 +309,19 @@ Worth knowing before you file an issue:
 - **`AsyncLocalStorage` is required** for scope propagation. Code that breaks async context will report queries outside any scope, and you get one warning saying so.
 - **Prisma and MongoDB report operations, not SQL** (`User.findUnique`, `users.findOne`) — that's the call you would batch, so it's the more actionable label, but it is not the raw statement.
 - **MongoDB cursors** (`find`, `aggregate`) are recorded when the cursor is created rather than when it is drained, so no duration is reported for them.
+
+## Verified against real applications
+
+Not just unit tests. Each release is run against real stacks, and the last one
+found three bugs that fixtures never would have:
+
+- **Next.js bundling** gives a route its own copy of the library, so the scope
+  and the driver ended up on two different `AsyncLocalStorage` instances and
+  nothing was detected. Shared state is now process-global.
+- **Transaction control** (`BEGIN`/`COMMIT`) was reported as duplicated work,
+  burying real findings under ORM bookkeeping.
+- **Lazy ORMs** execute from a thenable, so the caller's frame is gone by the
+  time the driver runs. Hence `nplusone/drizzle`.
 
 ## License
 

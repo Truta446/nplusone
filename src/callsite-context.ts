@@ -14,9 +14,10 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { shared } from "./global-state.js";
 import type { CallSite } from "./callsite.js";
 
-const storage = new AsyncLocalStorage<CallSite>();
+const storage = shared("callsite-storage", () => new AsyncLocalStorage<CallSite>());
 
 /** Runs `fn` with `callsite` published to any adapter underneath it. */
 export function runWithCallSite<T>(callsite: CallSite | undefined, fn: () => T): T {

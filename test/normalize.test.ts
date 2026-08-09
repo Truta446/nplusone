@@ -117,7 +117,8 @@ test("classifies statements, seeing through CTEs", () => {
   assert.equal(statementKind("UPDATE t SET a = 1"), "update");
   assert.equal(statementKind("DELETE FROM t"), "delete");
   assert.equal(statementKind("WITH x AS (SELECT 1) SELECT * FROM x"), "select");
-  assert.equal(statementKind("BEGIN"), "other");
+  assert.equal(statementKind("BEGIN"), "control");
+  assert.equal(statementKind("VACUUM"), "other");
   assert.equal(statementKind("/* hint */ SELECT 1"), "select");
 });
 

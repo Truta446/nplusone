@@ -45,6 +45,12 @@ export interface ScopeSummary {
   queryCount: number;
   durationMs: number;
   findings: readonly Finding[];
+  /**
+   * Every query recorded in the scope, in order (capped — see the scope's
+   * retention limit). A reporter needs these to explain a request that is
+   * expensive without anything repeating.
+   */
+  queries: readonly RecordedQuery[];
 }
 
 export type Mode = "warn" | "throw" | "silent";
@@ -91,6 +97,12 @@ export interface Options {
    * cost never lands on a production process unless you ask for it.
    */
   enabled?: boolean;
+  /**
+   * Also count `BEGIN`, `COMMIT`, `SET` and friends. Off by default: an ORM
+   * emits one pair per write, which reads as duplicated work while being
+   * ordinary bookkeeping.
+   */
+  includeTransactionControl?: boolean;
 }
 
 export interface ResolvedOptions {
@@ -105,4 +117,5 @@ export interface ResolvedOptions {
   onFinding: ((finding: Finding) => void) | undefined;
   reporter: ((summary: ScopeSummary) => void) | undefined;
   enabled: boolean;
+  includeTransactionControl: boolean;
 }
