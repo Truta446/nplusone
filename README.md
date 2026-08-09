@@ -89,7 +89,7 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **SQLite** (`node:sqlite`) | `instrumentNodeSqlite(sqlite)` | ✅ |
 | **MongoDB** | `instrumentMongodb(mongodb)` | ✅ |
 | **Prisma** | `instrumentPrisma(client)` | ✅ |
-| **Drizzle** | via its driver | ✅ |
+| **Drizzle** | driver **+** `instrumentDrizzle(db)` | ✅ |
 | **Knex** | via its driver | ✅ |
 | **TypeORM** | via its driver | ✅ |
 | **MikroORM** | via its driver (Knex) | ✅ |
@@ -98,7 +98,11 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **Mongoose** | via the MongoDB driver | ✅ |
 | Anything else | [10 lines with `record()`](#other-drivers) | 🔧 |
 
-> **Prisma is the exception worth knowing about.** By default it does not use `pg` or `mysql2` at all — it talks to the database through its own query engine, so driver-level instrumentation cannot see it. That is why it gets a dedicated adapter.
+> **Two exceptions worth knowing about.**
+>
+> **Prisma** does not use `pg` or `mysql2` at all — it talks to the database through its own query engine, so driver-level instrumentation cannot see it. Hence a dedicated adapter.
+>
+> **Drizzle** *is* detected through its driver, but without attribution. A Drizzle query is a lazy thenable, so the execution is triggered by the runtime calling `.then()` — measured against Drizzle 0.45, the stack at that point holds twelve frames and not one of them belongs to your code. Adding `instrumentDrizzle(db)` captures the call site while the query is still being built, and the driver adapter uses it. Use both together: the driver reports the SQL, Drizzle reports the line.
 
 <details>
 <summary><b>Setup for each driver</b></summary>
@@ -135,6 +139,16 @@ import * as sqlite from "node:sqlite";
 import { instrumentNodeSqlite } from "nplusone/sqlite";
 
 instrumentNodeSqlite(sqlite);
+```
+
+**Drizzle** — pair it with the driver adapter. Returns a *new* db, so use the returned one:
+
+```ts
+import { drizzle } from "drizzle-orm/postgres-js";
+import { instrumentDrizzle } from "nplusone/drizzle";
+
+instrumentPostgresJs(sql);                                  // reports the SQL
+export const db = instrumentDrizzle(drizzle(sql, { schema })); // reports the line
 ```
 
 **postgres.js** — returns a *new* `sql`, since it is a function rather than an object. Use the returned one:
@@ -275,7 +289,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 98 tests, including real queries against node:sqlite
+npm test          # 106 tests, including real queries against node:sqlite
 npm run coverage  # 96% lines, 95% functions
 ```
 
@@ -289,7 +303,7 @@ Scopes retain up to 10,000 queries each; past that, counting continues but indiv
 
 Worth knowing before you file an issue:
 
-- **Queries with no application frame on the stack** — some pools issue queries from a background task with no user code below them — are grouped by statement shape alone and reported as `<unknown call site>`.
+- **Queries with no application frame on the stack** — a lazy ORM executing from its own internals, or a pool issuing queries from a background task — are grouped by statement shape alone and reported as `<unknown call site>`. For Drizzle this is exactly what `nplusone/drizzle` fixes; for an ORM without an adapter yet, the finding still tells you which statement is looping.
 - **A legitimate batch loop** (a script importing rows one at a time) looks exactly like an N+1 from the driver's point of view. Use `statements: ["select"]` or `ignore` to quiet it.
 - **Cursors and streaming queries** (`pg.Cursor`, `pg-query-stream`) carry no statement text at the patch point and are not recorded.
 - **`AsyncLocalStorage` is required** for scope propagation. Code that breaks async context will report queries outside any scope, and you get one warning saying so.

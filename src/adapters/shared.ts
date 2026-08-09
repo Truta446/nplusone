@@ -10,6 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- driver boundary */
 
 import { captureCallSite, type CallSite } from "../callsite.js";
+import { ambientCallSite } from "../callsite-context.js";
 import { getOptions } from "../config.js";
 import { record } from "../scope.js";
 import type { StatementKind } from "../normalize.js";
@@ -75,10 +76,20 @@ export interface Observation {
   kind?: StatementKind | undefined;
 }
 
-/** Captures the application frame, if attribution is enabled. */
+/**
+ * Captures the application frame, if attribution is enabled.
+ *
+ * An ORM adapter above us may already know the answer — see
+ * {@link ambientCallSite}. Its value wins, because for a lazy ORM the stack at
+ * this point contains nothing but driver and ORM internals.
+ */
 export function captureNow(): CallSite | undefined {
   const options = getOptions();
   if (!options.captureStack) return undefined;
+
+  const ambient = ambientCallSite();
+  if (ambient !== undefined) return ambient;
+
   return captureCallSite({
     ignore: options.ignoreCallSites,
     depth: options.stackDepth,

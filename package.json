@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
@@ -78,7 +78,11 @@
       "types": "./dist/adapters/mongodb.d.ts",
       "import": "./dist/adapters/mongodb.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./drizzle": {
+      "types": "./dist/adapters/drizzle.d.ts",
+      "import": "./dist/adapters/drizzle.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
