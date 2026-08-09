@@ -4,10 +4,11 @@
 
 ### Catch N+1 queries in Node.js at runtime — and fail your CI before they reach production.
 
-[![npm version](https://img.shields.io/npm/v/nplusone.svg?style=flat-square&color=cb3837)](https://www.npmjs.com/package/nplusone)
-[![license](https://img.shields.io/npm/l/nplusone.svg?style=flat-square&color=blue)](./LICENSE)
-[![node](https://img.shields.io/node/v/nplusone.svg?style=flat-square&color=339933)](https://nodejs.org)
+[![npm version](https://img.shields.io/npm/v/nplusone?style=flat-square&color=cb3837)](https://www.npmjs.com/package/nplusone)
+[![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square)](https://nodejs.org)
 [![dependencies](https://img.shields.io/badge/dependencies-0-success?style=flat-square)](./package.json)
+[![CI](https://img.shields.io/github/actions/workflow/status/Truta446/nplusone/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Truta446/nplusone/actions)
 
 Ruby has [bullet](https://github.com/flyerhzm/bullet). Python has [nplusone](https://pypi.org/project/nplusone/).<br/>
 Node has had to make do with squinting at query logs. **This is that tool.**
