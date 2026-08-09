@@ -1,0 +1,82 @@
+{
+  "name": "nplusone",
+  "version": "0.1.0",
+  "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
+  "keywords": [
+    "n+1",
+    "n-plus-one",
+    "sql",
+    "performance",
+    "orm",
+    "postgres",
+    "mysql",
+    "sqlite",
+    "prisma",
+    "drizzle",
+    "knex",
+    "typeorm",
+    "mikro-orm",
+    "sequelize",
+    "profiling",
+    "database",
+    "query"
+  ],
+  "license": "MIT",
+  "author": "Juan Versolato <juan.versolato@outlook.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Truta446/nplusone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Truta446/nplusone/issues"
+  },
+  "homepage": "https://github.com/Truta446/nplusone#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./pg": {
+      "types": "./dist/adapters/pg.d.ts",
+      "import": "./dist/adapters/pg.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js"
+    },
+    "./test": {
+      "types": "./dist/test.d.ts",
+      "import": "./dist/test.js"
+    },
+    "./mysql2": {
+      "types": "./dist/adapters/mysql2.d.ts",
+      "import": "./dist/adapters/mysql2.js"
+    },
+    "./sqlite": {
+      "types": "./dist/adapters/sqlite.d.ts",
+      "import": "./dist/adapters/sqlite.js"
+    },
+    "./prisma": {
+      "types": "./dist/adapters/prisma.d.ts",
+      "import": "./dist/adapters/prisma.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc -p tsconfig.json && node --test \"dist-test/test/*.test.js\"",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
