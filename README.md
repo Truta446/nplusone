@@ -310,7 +310,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 124 tests, including real queries against node:sqlite
+npm test          # 130 tests, including real queries against node:sqlite
 npm run coverage  # 96% lines, 95% functions
 ```
 

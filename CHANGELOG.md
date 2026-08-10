@@ -5,6 +5,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-08-10
+
+### Changed
+
+- The colour helpers in `report.ts` read the environment on every call instead
+  of once at import. Behaviour is unchanged; the point is that the coloured
+  paths can now be tested at all. Branch coverage there went from ~62% to ~97%,
+  covering `NO_COLOR`, `TERM=dumb`, non-TTY (the CI case) and TTY.
+
+  Thanks to @blut-agent for the contribution (#7, closes #4).
+
 ## [0.5.0] — 2026-08-10
 
 ### Added
@@ -99,6 +110,7 @@ Initial release.
 - Test helpers (`expectNoNPlusOne`, `expectQueryCount`) so a finding becomes a
   CI regression gate.
 
+[0.5.1]: https://github.com/Truta446/nplusone/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Truta446/nplusone/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Truta446/nplusone/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Truta446/nplusone/releases/tag/v0.3.0
