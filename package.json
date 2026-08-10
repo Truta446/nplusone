@@ -109,9 +109,12 @@
     "test": "tsc -p tsconfig.json && node --test \"dist-test/test/*.test.js\"",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "coverage": "tsc -p tsconfig.json && node --test --experimental-test-coverage \"dist-test/test/*.test.js\""
+    "coverage": "tsc -p tsconfig.json && node --test --experimental-test-coverage \"dist-test/test/*.test.js\"",
+    "lint": "biome lint src test",
+    "lint:fix": "biome lint --write src test"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.7",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
   }

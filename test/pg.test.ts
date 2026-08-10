@@ -8,7 +8,7 @@ class FakeClient {
   calls = 0;
 
   async query(
-    config: unknown,
+    _config: unknown,
     values?: unknown,
     callback?: (error: unknown, result: unknown) => void,
   ): Promise<{ rows: unknown[] }> {

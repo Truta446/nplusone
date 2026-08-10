@@ -8,14 +8,12 @@ import { instrumentPrisma } from "../src/adapters/prisma.js";
  * new client whose operations route through the registered `$allOperations`
  * hook — the same contract the real client implements.
  */
-interface Handler {
-  (input: {
+type Handler = (input: {
     model?: string;
     operation: string;
     args: unknown;
     query: (args: unknown) => Promise<unknown>;
-  }): Promise<unknown>;
-}
+  }) => Promise<unknown>
 
 function fakePrisma() {
   const executed: string[] = [];

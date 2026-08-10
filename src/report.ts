@@ -84,5 +84,5 @@ export function formatSummary(summary: ScopeSummary): string {
 }
 
 export function defaultReporter(summary: ScopeSummary): void {
-  process.stderr.write(formatSummary(summary) + "\n\n");
+  process.stderr.write(`${formatSummary(summary)}\n\n`);
 }

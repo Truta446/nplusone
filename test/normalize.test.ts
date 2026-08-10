@@ -124,7 +124,7 @@ test("classifies statements, seeing through CTEs", () => {
 
 test("truncates long statements on a boundary", () => {
   assert.equal(truncateSql("SELECT 1", 100), "SELECT 1");
-  const long = "SELECT " + "x".repeat(200);
+  const long = `SELECT ${"x".repeat(200)}`;
   const short = truncateSql(long, 20);
   assert.equal(short.length, 20);
   assert.ok(short.endsWith("…"));
