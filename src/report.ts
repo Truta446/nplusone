@@ -68,6 +68,17 @@ export function formatSummary(summary: ScopeSummary): string {
       ),
   );
 
+  if (summary.inferred) {
+    // Say it plainly. Counts from a guessed window are not a measurement, and
+    // presenting them as one is how a heuristic loses people's trust.
+    lines.push(
+      c.dim(
+        "  scope was inferred from a burst of queries — concurrent requests may be mixed in.",
+      ),
+    );
+    lines.push(c.dim("  open a real scope for numbers you can rely on."));
+  }
+
   for (const finding of summary.findings) {
     lines.push("");
     lines.push(formatFinding(finding));

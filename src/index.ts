@@ -37,6 +37,7 @@ export {
   runInScopeSync,
   runWithScope,
   getCurrentScope,
+  flushAutoScope,
   resetScopeWarning,
   type RecordInput,
 } from "./scope.js";

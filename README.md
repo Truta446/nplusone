@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/nplusone?style=flat-square&color=cb3837)](https://www.npmjs.com/package/nplusone)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
-[![node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square)](https://nodejs.org)
+[![node](https://img.shields.io/badge/node-18%20%7C%2020%20%7C%2022%20%7C%2024-339933?style=flat-square)](https://nodejs.org)
 [![dependencies](https://img.shields.io/badge/dependencies-0-success?style=flat-square)](./package.json)
 [![CI](https://img.shields.io/github/actions/workflow/status/Truta446/nplusone/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Truta446/nplusone/actions)
 
@@ -57,6 +57,12 @@ It is invisible in development against a seeded database with three rows, and it
 ```sh
 npm install --save-dev nplusone
 ```
+
+Tested on Node **18, 20, 22 and 24**.
+
+The package is ESM. `import` works on every version above; `require()` works
+from Node 20.19 onwards, which is where Node backported requiring an ES module.
+On Node 18 — end-of-life since April 2025 — use `import`.
 
 ## Quick start
 
@@ -210,6 +216,19 @@ import { runInScope } from "nplusone";
 await runInScope("nightly-report", () => generateReport());
 ```
 
+**Just trying it out?** `autoScope` groups queries that arrive with no scope,
+closing the group after a short idle gap — so you see something on the first run
+without wiring anything:
+
+```ts
+configure({ autoScope: true });
+```
+
+It is a **heuristic**, and off by default for that reason: concurrent requests
+can land in the same inferred group and inflate the counts. The report says so
+whenever a scope was inferred. For numbers you can trust, and for CI, open a
+real scope.
+
 ## Guarding it in CI
 
 This is the part that keeps the bug from coming back.
@@ -260,6 +279,8 @@ configure({
   statements: ["select"],  // restrict to certain statement kinds
   ignore: [/pg_catalog/],  // skip queries matching these
   captureStack: true,      // attribute queries to a line of code
+  autoScope: false,        // group unscoped queries heuristically (see above)
+  autoScopeIdleMs: 50,     // idle gap that ends an inferred scope
   onFinding: (f) => metrics.increment("n_plus_one", { scope: f.scope }),
   reporter: (summary) => logger.warn(summary),
   enabled: process.env.NODE_ENV !== "production",  // the default
@@ -289,7 +310,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 114 tests, including real queries against node:sqlite
+npm test          # 124 tests, including real queries against node:sqlite
 npm run coverage  # 96% lines, 95% functions
 ```
 

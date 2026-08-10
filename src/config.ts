@@ -15,6 +15,8 @@ function defaults(): ResolvedOptions {
     reporter: undefined,
     enabled: process.env["NODE_ENV"] !== "production",
     includeTransactionControl: false,
+    autoScope: false,
+    autoScopeIdleMs: 50,
   };
 }
 
@@ -42,6 +44,8 @@ export function configure(options: Options): ResolvedOptions {
     enabled: options.enabled ?? current.enabled,
     includeTransactionControl:
       options.includeTransactionControl ?? current.includeTransactionControl,
+    autoScope: options.autoScope ?? current.autoScope,
+    autoScopeIdleMs: options.autoScopeIdleMs ?? current.autoScopeIdleMs,
   });
 }
 
