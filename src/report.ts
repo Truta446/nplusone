@@ -2,6 +2,10 @@ import type { Finding, ScopeSummary } from "./types.js";
 import { formatCallSite } from "./callsite.js";
 import { truncateSql } from "./normalize.js";
 
+/**
+ * Read on every call rather than once at import: output may be a terminal in
+ * one process and a pipe in another, and a test needs to exercise both paths.
+ */
 function useColor(): boolean {
   return (
     process.env["NO_COLOR"] === undefined &&
@@ -17,14 +21,6 @@ const c = {
   red: (s: string) => (useColor() ? `\u001b[31m${s}\u001b[39m` : s),
   cyan: (s: string) => (useColor() ? `\u001b[36m${s}\u001b[39m` : s),
 };
-
-// Exported for tests that mutate process.env or process.stderr.isTTY.
-// Call before each test that needs a fresh read.
-export function _resetColorState(): void {
-  // The color functions always re-read env, so nothing to reset.
-  // This function exists so tests can coordinate cache invalidation
-  // if a cached variant is ever reintroduced.
-}
 
 function headline(finding: Finding): string {
   return finding.type === "n_plus_one"

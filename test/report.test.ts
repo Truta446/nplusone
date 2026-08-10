@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatFinding, formatSummary, _resetColorState } from "../src/report.js";
+import { formatFinding, formatSummary } from "../src/report.js";
 import type { Finding, ScopeSummary } from "../src/types.js";
 
 /**
@@ -37,6 +37,7 @@ function makeSummary(
 ): ScopeSummary {
   return {
     name: "GET /items",
+    inferred: false,
     findings,
     queryCount: 11,
     durationMs: 300,
@@ -52,7 +53,6 @@ function withNoColor(fn: () => void): void {
   const original = process.env["NO_COLOR"];
   try {
     process.env["NO_COLOR"] = "1";
-    _resetColorState();
     fn();
   } finally {
     if (original === undefined) {
@@ -70,7 +70,6 @@ function withDumbTerm(fn: () => void): void {
   const original = process.env["TERM"];
   try {
     process.env["TERM"] = "dumb";
-    _resetColorState();
     fn();
   } finally {
     if (original === undefined) {
@@ -88,7 +87,6 @@ function withNoTTY(fn: () => void): void {
   const original = process.stderr.isTTY;
   try {
     process.stderr.isTTY = false;
-    _resetColorState();
     fn();
   } finally {
     process.stderr.isTTY = original;
@@ -140,7 +138,6 @@ test("TTY and no NO_COLOR → codes present", () => {
       process.env["TERM"] = "xterm-256color";
     }
     process.stderr.isTTY = true;
-    _resetColorState();
     const out = formatSummary(makeSummary());
     assert.ok(
       /\u001b\[\d+m/.test(out),
@@ -172,7 +169,6 @@ test("formatFinding with both finding types, with and without NO_COLOR", () => {
     if (process.env["TERM"] === "dumb") {
       process.env["TERM"] = "xterm-256color";
     }
-    _resetColorState();
 
     const nPlusOneFinding = makeFinding({ type: "n_plus_one" });
     const dupFinding = makeFinding({
