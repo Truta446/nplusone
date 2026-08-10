@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/nplusone?style=flat-square&color=cb3837)](https://www.npmjs.com/package/nplusone)
 [![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
-[![node](https://img.shields.io/badge/node-%3E%3D18-339933?style=flat-square)](https://nodejs.org)
+[![node](https://img.shields.io/badge/node-18%20%7C%2020%20%7C%2022%20%7C%2024-339933?style=flat-square)](https://nodejs.org)
 [![dependencies](https://img.shields.io/badge/dependencies-0-success?style=flat-square)](./package.json)
 [![CI](https://img.shields.io/github/actions/workflow/status/Truta446/nplusone/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Truta446/nplusone/actions)
 
@@ -57,6 +57,12 @@ It is invisible in development against a seeded database with three rows, and it
 ```sh
 npm install --save-dev nplusone
 ```
+
+Tested on Node **18, 20, 22 and 24**.
+
+The package is ESM. `import` works on every version above; `require()` works
+from Node 20.19 onwards, which is where Node backported requiring an ES module.
+On Node 18 — end-of-life since April 2025 — use `import`.
 
 ## Quick start
 

@@ -4,3 +4,4 @@ dist-test/
 *.tsbuildinfo
 .DS_Store
 npm-debug.log*
+PROMOTION.md

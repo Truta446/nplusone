@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
@@ -44,44 +44,64 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./pg": {
       "types": "./dist/adapters/pg.d.ts",
-      "import": "./dist/adapters/pg.js"
+      "import": "./dist/adapters/pg.js",
+      "require": "./dist/adapters/pg.js",
+      "default": "./dist/adapters/pg.js"
     },
     "./http": {
       "types": "./dist/http.d.ts",
-      "import": "./dist/http.js"
+      "import": "./dist/http.js",
+      "require": "./dist/http.js",
+      "default": "./dist/http.js"
     },
     "./test": {
       "types": "./dist/test.d.ts",
-      "import": "./dist/test.js"
+      "import": "./dist/test.js",
+      "require": "./dist/test.js",
+      "default": "./dist/test.js"
     },
     "./mysql2": {
       "types": "./dist/adapters/mysql2.d.ts",
-      "import": "./dist/adapters/mysql2.js"
+      "import": "./dist/adapters/mysql2.js",
+      "require": "./dist/adapters/mysql2.js",
+      "default": "./dist/adapters/mysql2.js"
     },
     "./sqlite": {
       "types": "./dist/adapters/sqlite.d.ts",
-      "import": "./dist/adapters/sqlite.js"
+      "import": "./dist/adapters/sqlite.js",
+      "require": "./dist/adapters/sqlite.js",
+      "default": "./dist/adapters/sqlite.js"
     },
     "./prisma": {
       "types": "./dist/adapters/prisma.d.ts",
-      "import": "./dist/adapters/prisma.js"
+      "import": "./dist/adapters/prisma.js",
+      "require": "./dist/adapters/prisma.js",
+      "default": "./dist/adapters/prisma.js"
     },
     "./postgresjs": {
       "types": "./dist/adapters/postgresjs.d.ts",
-      "import": "./dist/adapters/postgresjs.js"
+      "import": "./dist/adapters/postgresjs.js",
+      "require": "./dist/adapters/postgresjs.js",
+      "default": "./dist/adapters/postgresjs.js"
     },
     "./mongodb": {
       "types": "./dist/adapters/mongodb.d.ts",
-      "import": "./dist/adapters/mongodb.js"
+      "import": "./dist/adapters/mongodb.js",
+      "require": "./dist/adapters/mongodb.js",
+      "default": "./dist/adapters/mongodb.js"
     },
     "./package.json": "./package.json",
     "./drizzle": {
       "types": "./dist/adapters/drizzle.d.ts",
-      "import": "./dist/adapters/drizzle.js"
+      "import": "./dist/adapters/drizzle.js",
+      "require": "./dist/adapters/drizzle.js",
+      "default": "./dist/adapters/drizzle.js"
     }
   },
   "scripts": {
