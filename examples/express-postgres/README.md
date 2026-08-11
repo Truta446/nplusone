@@ -9,7 +9,3 @@ docker compose up -d
 node seed.mjs
 node server.mjs
 ```
-## Test
-
-```bash
-node test/index.test.mjs
