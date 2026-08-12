@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import pg from "pg";
-import { configure } from "../../dist/index.js";
-import { instrumentPg } from "../../dist/adapters/pg.js";
-import { expectNoNPlusOne } from "../../dist/test.js";
+import { configure } from "../../../dist/index.js";
+import { instrumentPg } from "../../../dist/adapters/pg.js";
+import { expectNoNPlusOne } from "../../../dist/test.js";
 
 instrumentPg(pg);
 configure({ threshold: 5, duplicateThreshold: 2 });
@@ -41,4 +41,10 @@ test("fast endpoint has no N+1", async () => {
     const orderIds = orders.map((o) => o.id);
     await db.query("SELECT * FROM order_items WHERE order_id = ANY($1)", [orderIds]);
   }, { name: "fast endpoint" });
+});
+
+test("closes the connection", async () => {
+  // Without this the client keeps the event loop alive and `node
+  // test/index.test.mjs` never exits.
+  await db.end();
 });
