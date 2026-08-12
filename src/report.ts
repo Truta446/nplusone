@@ -2,17 +2,24 @@ import type { Finding, ScopeSummary } from "./types.js";
 import { formatCallSite } from "./callsite.js";
 import { truncateSql } from "./normalize.js";
 
-const useColor =
-  process.env["NO_COLOR"] === undefined &&
-  process.env["TERM"] !== "dumb" &&
-  process.stderr.isTTY === true;
+/**
+ * Read on every call rather than once at import: output may be a terminal in
+ * one process and a pipe in another, and a test needs to exercise both paths.
+ */
+function useColor(): boolean {
+  return (
+    process.env["NO_COLOR"] === undefined &&
+    process.env["TERM"] !== "dumb" &&
+    process.stderr.isTTY === true
+  );
+}
 
 const c = {
-  dim: (s: string) => (useColor ? `\u001b[2m${s}\u001b[22m` : s),
-  bold: (s: string) => (useColor ? `\u001b[1m${s}\u001b[22m` : s),
-  yellow: (s: string) => (useColor ? `\u001b[33m${s}\u001b[39m` : s),
-  red: (s: string) => (useColor ? `\u001b[31m${s}\u001b[39m` : s),
-  cyan: (s: string) => (useColor ? `\u001b[36m${s}\u001b[39m` : s),
+  dim: (s: string) => (useColor() ? `\u001b[2m${s}\u001b[22m` : s),
+  bold: (s: string) => (useColor() ? `\u001b[1m${s}\u001b[22m` : s),
+  yellow: (s: string) => (useColor() ? `\u001b[33m${s}\u001b[39m` : s),
+  red: (s: string) => (useColor() ? `\u001b[31m${s}\u001b[39m` : s),
+  cyan: (s: string) => (useColor() ? `\u001b[36m${s}\u001b[39m` : s),
 };
 
 function headline(finding: Finding): string {
@@ -57,6 +64,17 @@ export function formatSummary(summary: ScopeSummary): string {
       ),
   );
 
+  if (summary.inferred) {
+    // Say it plainly. Counts from a guessed window are not a measurement, and
+    // presenting them as one is how a heuristic loses people's trust.
+    lines.push(
+      c.dim(
+        "  scope was inferred from a burst of queries — concurrent requests may be mixed in.",
+      ),
+    );
+    lines.push(c.dim("  open a real scope for numbers you can rely on."));
+  }
+
   for (const finding of summary.findings) {
     lines.push("");
     lines.push(formatFinding(finding));
@@ -66,5 +84,5 @@ export function formatSummary(summary: ScopeSummary): string {
 }
 
 export function defaultReporter(summary: ScopeSummary): void {
-  process.stderr.write(formatSummary(summary) + "\n\n");
+  process.stderr.write(`${formatSummary(summary)}\n\n`);
 }

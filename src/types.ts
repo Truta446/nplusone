@@ -42,6 +42,11 @@ export interface Finding {
 
 export interface ScopeSummary {
   name: string;
+  /**
+   * True when no scope was opened by the application and one was inferred from
+   * a burst of queries. Counts from an inferred scope are approximate.
+   */
+  inferred: boolean;
   queryCount: number;
   durationMs: number;
   findings: readonly Finding[];
@@ -103,6 +108,22 @@ export interface Options {
    * ordinary bookkeeping.
    */
   includeTransactionControl?: boolean;
+  /**
+   * Group queries that arrive with no scope into an inferred one, closed after
+   * a short idle gap.
+   *
+   * Off by default, and deliberately so. It is a **heuristic**: queries from
+   * concurrent requests can land in the same inferred scope and inflate the
+   * counts. It exists so that a first run shows something instead of nothing —
+   * for a measurement you can trust, and for CI, open a real scope.
+   */
+  autoScope?: boolean;
+  /**
+   * How long an inferred scope waits for another query before closing, in
+   * milliseconds. Default `50`, which is long enough to hold one request's
+   * burst together and short enough to separate two of them.
+   */
+  autoScopeIdleMs?: number;
 }
 
 export interface ResolvedOptions {
@@ -118,4 +139,6 @@ export interface ResolvedOptions {
   reporter: ((summary: ScopeSummary) => void) | undefined;
   enabled: boolean;
   includeTransactionControl: boolean;
+  autoScope: boolean;
+  autoScopeIdleMs: number;
 }

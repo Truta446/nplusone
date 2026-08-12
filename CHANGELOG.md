@@ -5,6 +5,38 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-08-10
+
+### Changed
+
+- The colour helpers in `report.ts` read the environment on every call instead
+  of once at import. Behaviour is unchanged; the point is that the coloured
+  paths can now be tested at all. Branch coverage there went from ~62% to ~97%,
+  covering `NO_COLOR`, `TERM=dumb`, non-TTY (the CI case) and TTY.
+
+  Thanks to @blut-agent for the contribution (#7, closes #4).
+
+## [0.5.0] — 2026-08-10
+
+### Added
+
+- **`autoScope`** — an opt-in mode that groups queries arriving with no scope
+  into an inferred one, closed after a short idle gap. Missing the scoping step
+  was the most likely way to conclude the library did not work: it recorded
+  nothing and printed a single warning. Now a first run shows something.
+
+  It is a heuristic and says so — concurrent requests can land in the same
+  inferred group, and every report from one is labelled as inferred. Off by
+  default; CI and real measurement still want a real scope.
+
+  Two details worth knowing. The idle timer is `unref`'d, so it can never hold a
+  process open. That alone would mean a short script exits before the window
+  elapses and prints nothing, so an inferred scope is also flushed on
+  `beforeExit`.
+
+- `flushAutoScope()` closes an inferred scope immediately.
+- `ScopeSummary.inferred` distinguishes a guessed window from a real one.
+
 ## [0.4.0] — 2026-08-09
 
 Everything in this release came out of running the detector against real
@@ -78,6 +110,8 @@ Initial release.
 - Test helpers (`expectNoNPlusOne`, `expectQueryCount`) so a finding becomes a
   CI regression gate.
 
+[0.5.1]: https://github.com/Truta446/nplusone/releases/tag/v0.5.1
+[0.5.0]: https://github.com/Truta446/nplusone/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Truta446/nplusone/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Truta446/nplusone/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Truta446/nplusone/releases/tag/v0.2.0

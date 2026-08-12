@@ -216,6 +216,19 @@ import { runInScope } from "nplusone";
 await runInScope("nightly-report", () => generateReport());
 ```
 
+**Just trying it out?** `autoScope` groups queries that arrive with no scope,
+closing the group after a short idle gap — so you see something on the first run
+without wiring anything:
+
+```ts
+configure({ autoScope: true });
+```
+
+It is a **heuristic**, and off by default for that reason: concurrent requests
+can land in the same inferred group and inflate the counts. The report says so
+whenever a scope was inferred. For numbers you can trust, and for CI, open a
+real scope.
+
 ## Guarding it in CI
 
 This is the part that keeps the bug from coming back.
@@ -266,6 +279,8 @@ configure({
   statements: ["select"],  // restrict to certain statement kinds
   ignore: [/pg_catalog/],  // skip queries matching these
   captureStack: true,      // attribute queries to a line of code
+  autoScope: false,        // group unscoped queries heuristically (see above)
+  autoScopeIdleMs: 50,     // idle gap that ends an inferred scope
   onFinding: (f) => metrics.increment("n_plus_one", { scope: f.scope }),
   reporter: (summary) => logger.warn(summary),
   enabled: process.env.NODE_ENV !== "production",  // the default
@@ -295,7 +310,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 114 tests, including real queries against node:sqlite
+npm test          # 130 tests, including real queries against node:sqlite
 npm run coverage  # 96% lines, 95% functions
 ```
 

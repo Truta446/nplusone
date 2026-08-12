@@ -238,5 +238,5 @@ export function statementKind(sql: string): StatementKind {
 /** Shortens a query for single-line display without cutting mid-word. */
 export function truncateSql(sql: string, max = 100): string {
   if (sql.length <= max) return sql;
-  return sql.slice(0, max - 1).trimEnd() + "…";
+  return `${sql.slice(0, max - 1).trimEnd()}…`;
 }
