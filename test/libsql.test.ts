@@ -25,6 +25,18 @@ class FakeLibsqlClient {
   }
 }
 
+/** Takes a measurable amount of time, so timings can be asserted on. */
+class SlowLibsqlClient extends FakeLibsqlClient {
+  static readonly DELAY_MS = 40;
+
+  override async batch(
+    statements: Statement[],
+  ): Promise<Array<{ rows: unknown[] }>> {
+    await new Promise((resolve) => setTimeout(resolve, SlowLibsqlClient.DELAY_MS));
+    return super.batch(statements);
+  }
+}
+
 beforeEach(() => {
   resetConfig();
   configure({ mode: "silent", enabled: true });
@@ -106,6 +118,37 @@ test("instrumenting twice does not double count", async () => {
 
   restoreB();
   restoreA();
+});
+
+test("does not multiply the time a batch actually took", async () => {
+  const client = new SlowLibsqlClient();
+  const restore = instrumentLibsql(client);
+  configure({ threshold: 1000 });
+
+  const statements = Array.from({ length: 5 }, (_, id) => ({
+    sql: "SELECT * FROM items WHERE order_id = ?",
+    args: [id],
+  }));
+
+  let elapsed = 0;
+  let reported = 0;
+  await runInScope("timing", async (scope) => {
+    const started = performance.now();
+    await client.batch(statements);
+    elapsed = performance.now() - started;
+    reported = scope.queries.reduce((sum, query) => sum + (query.durationMs ?? 0), 0);
+  });
+  restore();
+
+  // Wrapping each statement in its own observe() nests the timers, so every
+  // outer one contains all the inner ones and five statements report roughly
+  // five times the truth. The batch is one round trip: the total is what the
+  // round trip cost, however it is divided between the statements.
+  assert.ok(
+    reported <= elapsed * 1.5,
+    `reported ${reported.toFixed(1)}ms for a batch that took ${elapsed.toFixed(1)}ms`,
+  );
+  assert.ok(reported > 0, "a batch that took real time must report some of it");
 });
 
 test("rejects an invalid client", () => {

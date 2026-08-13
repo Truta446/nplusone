@@ -12,6 +12,7 @@ import {
   combineRestores,
   disabled,
   observe,
+  observeBatch,
   patchMethod,
   unpatchMethod,
   type AnyFn,
@@ -67,12 +68,9 @@ function wrapBatch(original: AnyFn): AnyFn {
       .map(observationOf)
       .filter((observation): observation is Observation => observation !== undefined);
 
-    const execute = observations.reduce<() => unknown>(
-      (next, observation) => () => observe(observation, next),
-      () => original.apply(this, args),
-    );
-
-    return execute();
+    // One round trip, several statements — see observeBatch() for why they are
+    // not each wrapped in their own observe().
+    return observeBatch(observations, () => original.apply(this, args));
   };
 }
 
