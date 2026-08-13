@@ -48,6 +48,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **libSQL / Turso adapter** — `instrumentLibsql(client)` via `nplusone/libsql`
+  (#13, closes #1). Records both call shapes `@libsql/client` accepts (a SQL
+  string and a `{ sql, args }` object, positional or named), and records each
+  statement of a `batch()` separately — a batch is one round trip but several
+  statements, and collapsing it into one would hide exactly the N+1 a batch
+  loop produces.
+
+  Thanks to @milekv for the contribution.
+
+  One change on merge: the statements in a batch were each wrapped in their own
+  timing, which nests them, so every outer timer contained all the inner ones —
+  a batch of six reported roughly five times the time it actually took, and one
+  of fifty would report twenty-five. Drivers give no per-statement timing for a
+  batch, so the round trip is now divided evenly: each statement's duration is
+  an estimate, and the sum, which is what a finding reports, is the measurement.
+
 - **`maxQueries`** — a per-scope query budget (#3). Not every expensive request
   repeats itself: running the detector against a real admin API turned up a
   route issuing fourteen *different* statements to load one record, and the

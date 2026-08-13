@@ -93,6 +93,7 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **MySQL / MariaDB** (`mysql2`) | `instrumentMysql2(mysql)` | ✅ |
 | **SQLite** (`better-sqlite3`) | `instrumentBetterSqlite3(Database)` | ✅ |
 | **SQLite** (`node:sqlite`) | `instrumentNodeSqlite(sqlite)` | ✅ |
+| **libSQL / Turso** (`@libsql/client`) | `instrumentLibsql(client)` | ✅ |
 | **MongoDB** | `instrumentMongodb(mongodb)` | ✅ |
 | **Prisma** | `instrumentPrisma(client)` | ✅ |
 | **Drizzle** | driver **+** `instrumentDrizzle(db)` | ✅ |
@@ -145,6 +146,16 @@ import * as sqlite from "node:sqlite";
 import { instrumentNodeSqlite } from "nplusone/sqlite";
 
 instrumentNodeSqlite(sqlite);
+```
+
+**libSQL / Turso**:
+
+```ts
+import { createClient } from "@libsql/client";
+import { instrumentLibsql } from "nplusone/libsql";
+
+const client = createClient({ url: process.env.TURSO_DATABASE_URL! });
+instrumentLibsql(client);
 ```
 
 **Drizzle** — pair it with the driver adapter. Returns a *new* db, so use the returned one:

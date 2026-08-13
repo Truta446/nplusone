@@ -151,6 +151,76 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 }
 
 /**
+ * Runs `execute` once and records several statements against it — one driver
+ * round trip that carries a batch.
+ *
+ * Recording each statement with its own {@link observe} would mean nesting one
+ * call inside the next, and every outer timer would then include all the inner
+ * ones: a batch of six reads as roughly five times the time it actually took,
+ * and one of fifty as twenty-five. A batch loop is exactly where an N+1 hides,
+ * so that number needs to be trustworthy.
+ *
+ * Drivers report no per-statement timing for a batch, so the round trip is
+ * divided evenly. Each statement's duration is an estimate; the **sum**, which
+ * is what a finding reports, is the measurement.
+ */
+export function observeBatch<T>(
+  observations: readonly Observation[],
+  execute: () => T,
+): T {
+  if (observations.length === 0) return execute();
+
+  const { callsite, builtAt } = originNow();
+  const started = performance.now();
+
+  const commit = (): void => {
+    const each = (performance.now() - started) / observations.length;
+    for (const observation of observations) {
+      record({
+        sql: observation.sql,
+        params: observation.params,
+        kind: observation.kind,
+        callsite,
+        builtAt,
+        durationMs: each,
+      });
+    }
+  };
+
+  const commitQuietly = (): void => {
+    try {
+      commit();
+    } catch {
+      // Same reasoning as observe(): the driver's error wins.
+    }
+  };
+
+  let result: T;
+  try {
+    result = execute();
+  } catch (error) {
+    commitQuietly();
+    throw error;
+  }
+
+  if (isThenable(result)) {
+    return (result as PromiseLike<unknown>).then(
+      (value) => {
+        commit();
+        return value;
+      },
+      (error: unknown) => {
+        commitQuietly();
+        throw error;
+      },
+    ) as T;
+  }
+
+  commit();
+  return result;
+}
+
+/**
  * Runs `execute`, recording the query when it completes. Handles synchronous
  * returns and promises alike, so one helper covers `better-sqlite3` and `pg`.
  *
