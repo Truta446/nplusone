@@ -13,6 +13,12 @@ export interface RecordedQuery {
   kind: StatementKind;
   params: readonly unknown[] | undefined;
   callsite: CallSite | undefined;
+  /**
+   * Where the query builder was constructed, when an ORM adapter could tell
+   * that apart from the line that executed it. Undefined when they are the
+   * same place or when no ORM adapter was involved.
+   */
+  builtAt: CallSite | undefined;
   /** Milliseconds between the scope opening and this query starting. */
   offsetMs: number;
   /** How long the query took, when the adapter reports it. */
@@ -23,21 +29,47 @@ export type FindingType =
   /** The same query shape ran repeatedly from one line of code. */
   | "n_plus_one"
   /** The exact same query *with the same values* ran more than once. */
-  | "duplicate";
+  | "duplicate"
+  /** The scope issued more queries than its budget allows. */
+  | "too_many_queries";
+
+/** One statement's share of a scope's query budget. */
+export interface StatementCount {
+  normalized: string;
+  count: number;
+}
 
 export interface Finding {
   type: FindingType;
-  /** How many times it ran. Kept up to date until the scope closes. */
+  /**
+   * How many times it ran — for `too_many_queries`, how many queries the scope
+   * issued in total. Kept up to date until the scope closes.
+   */
   count: number;
   normalized: string;
   /** One of the actual statements, for display. */
   sample: string;
   kind: StatementKind;
+  /**
+   * The line to go and look at. Always undefined for `too_many_queries`: no
+   * single line is to blame when the problem is the total.
+   */
   callsite: CallSite | undefined;
+  /**
+   * Where the query builder was constructed, when that differs from
+   * {@link callsite} — a repository helper, typically, with the loop that
+   * matters in `callsite`.
+   */
+  builtAt: CallSite | undefined;
   /** Name of the scope it was found in, e.g. `GET /orders`. */
   scope: string;
   /** Summed duration of the repeated queries, when adapters report it. */
   totalDurationMs: number | undefined;
+  /**
+   * For `too_many_queries`: where the budget went, most frequent first.
+   * Undefined for every other finding type.
+   */
+  breakdown: readonly StatementCount[] | undefined;
 }
 
 export interface ScopeSummary {
@@ -124,6 +156,18 @@ export interface Options {
    * burst together and short enough to separate two of them.
    */
   autoScopeIdleMs?: number;
+  /**
+   * Report a scope that issues more than this many queries, even when nothing
+   * repeats. Not every expensive request has an N+1 in it — fourteen different
+   * statements to render one page is worth knowing about too.
+   *
+   * Off by default, so upgrading never adds noise. The finding is reported but
+   * never thrown, whatever `mode` says: the check runs when the scope closes,
+   * which for a request is inside a `finally` or a `finish` handler, and
+   * throwing from there would replace a real error or crash the process. To
+   * fail a test on a budget, use `expectQueryCount()`.
+   */
+  maxQueries?: number;
 }
 
 export interface ResolvedOptions {
@@ -141,4 +185,5 @@ export interface ResolvedOptions {
   includeTransactionControl: boolean;
   autoScope: boolean;
   autoScopeIdleMs: number;
+  maxQueries: number | undefined;
 }

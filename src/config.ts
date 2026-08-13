@@ -17,6 +17,7 @@ function defaults(): ResolvedOptions {
     includeTransactionControl: false,
     autoScope: false,
     autoScopeIdleMs: 50,
+    maxQueries: undefined,
   };
 }
 
@@ -46,6 +47,7 @@ export function configure(options: Options): ResolvedOptions {
       options.includeTransactionControl ?? current.includeTransactionControl,
     autoScope: options.autoScope ?? current.autoScope,
     autoScopeIdleMs: options.autoScopeIdleMs ?? current.autoScopeIdleMs,
+    maxQueries: options.maxQueries ?? current.maxQueries,
   });
 }
 

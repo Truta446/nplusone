@@ -168,6 +168,16 @@ instrumentPostgresJs(sql);                                  // reports the SQL
 export const db = instrumentDrizzle(drizzle(sql, { schema })); // reports the line
 ```
 
+Construction and execution are not always the same place. When a repository helper builds the query and a route runs it in a loop, the loop is what you need to see — so the adapter keeps **both** origins and reports the one nearest to execution:
+
+```
+  N+1 query  10× SELECT * FROM order_items WHERE order_id = ?
+     at src/routes/orders.ts:38  (loadOrders)
+     built at src/repositories/items.ts:12  (baseQuery)
+```
+
+The `built at` line only appears when it says something the first line does not.
+
 **postgres.js** — returns a *new* `sql`, since it is a function rather than an object. Use the returned one:
 
 ```ts
@@ -275,10 +285,34 @@ Inside a scope, two different problems get reported — and keeping them apart i
 | --- | --- | --- |
 | **N+1 query** | One statement shape ran from one line with ≥ `threshold` **different** values | Batch it — `WHERE id = ANY($1)`, a join, or a DataLoader |
 | **Duplicate query** | A byte-identical statement with identical parameters ran ≥ `duplicateThreshold` times | Cache it, or hoist it out of the loop |
+| **Query budget** | The scope issued more than `maxQueries` statements, whatever they were | Look at the breakdown — usually a layer fetching more than the page needs |
 
 Counting raw repetitions would flag a query that runs ten times with the *same* argument as an N+1. It isn't one — that's a caching problem with a different fix. So the N+1 rule counts **distinct parameter sets**, and when a driver interpolates values straight into the SQL, the statement text itself acts as the discriminator.
 
 Statements are normalized before comparison, so `WHERE id = 42` and `WHERE id = 43` are one shape. The normalizer is a scanner rather than a pile of regexes, because literals need context: `--` inside a string is not a comment, the `2` in `col2` is not a number, and `::text` is a cast rather than a placeholder.
+
+### Requests that are slow without repeating
+
+Not every expensive endpoint has an N+1 in it. Running the detector against a real admin API turned up a route that issued **fourteen different statements** to load one record — nothing repeated, so nothing was reported. `maxQueries` covers that case:
+
+```ts
+configure({ maxQueries: 10 });
+```
+
+```
+nplusone 1 finding in GET /dashboard — 8 queries, 9ms
+
+  Query budget  8 queries in one scope (limit 6)
+     7.2ms spent querying
+     1× SELECT count(*) FROM orders
+     1× SELECT count(*) FROM order_items
+     1× SELECT * FROM orders ORDER BY created_at DESC LIMIT ?
+     …
+```
+
+It prints no call site, because there isn't one to print — the total is the finding, not any single line. The breakdown is there instead, ordered by count, so you can see where the budget went.
+
+It is **off by default** and it never throws, whatever `mode` says: the check runs when the scope closes, which for a request means a `finally` block or a `finish` handler, and throwing from there would replace a real error or take the process down. To fail a test on a budget, use [`expectQueryCount()`](#guarding-it-in-ci).
 
 ## Configuration
 
@@ -290,6 +324,7 @@ configure({
   statements: ["select"],  // restrict to certain statement kinds
   ignore: [/pg_catalog/],  // skip queries matching these
   captureStack: true,      // attribute queries to a line of code
+  maxQueries: 10,          // report a scope over this many queries (off by default)
   autoScope: false,        // group unscoped queries heuristically (see above)
   autoScopeIdleMs: 50,     // idle gap that ends an inferred scope
   onFinding: (f) => metrics.increment("n_plus_one", { scope: f.scope }),
@@ -321,8 +356,8 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 130 tests, including real queries against node:sqlite
-npm run coverage  # 96% lines, 95% functions
+npm test          # 150 tests, including real queries against node:sqlite
+npm run coverage  # 80% lines, 83% branches
 ```
 
 ## Cost
@@ -336,6 +371,7 @@ Scopes retain up to 10,000 queries each; past that, counting continues but indiv
 Worth knowing before you file an issue:
 
 - **Queries with no application frame on the stack** — a lazy ORM executing from its own internals, or a pool issuing queries from a background task — are grouped by statement shape alone and reported as `<unknown call site>`. For Drizzle this is exactly what `nplusone/drizzle` fixes; for an ORM without an adapter yet, the finding still tells you which statement is looping.
+- **A fully encapsulated query builder** still reports the helper. If the whole chain lives inside `function q(id) { return db.select().from(items).where(eq(items.id, id)) }`, every building call happens in the helper and no application frame anywhere names the loop. The finding is accurate about the statement; the line is the closest one that exists.
 - **A legitimate batch loop** (a script importing rows one at a time) looks exactly like an N+1 from the driver's point of view. Use `statements: ["select"]` or `ignore` to quiet it.
 - **Cursors and streaming queries** (`pg.Cursor`, `pg-query-stream`) carry no statement text at the patch point and are not recorded.
 - **`AsyncLocalStorage` is required** for scope propagation. Code that breaks async context will report queries outside any scope, and you get one warning saying so.

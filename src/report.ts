@@ -1,5 +1,5 @@
 import type { Finding, ScopeSummary } from "./types.js";
-import { formatCallSite } from "./callsite.js";
+import { formatCallSite, sameLine } from "./callsite.js";
 import { truncateSql } from "./normalize.js";
 
 /**
@@ -28,13 +28,43 @@ function headline(finding: Finding): string {
     : c.yellow(`Duplicate query`);
 }
 
+/**
+ * The budget finding has no line to blame, so it gets its own layout: the total
+ * and then where it went, rather than a call site and a single statement.
+ */
+function formatBudget(finding: Finding): string {
+  const lines: string[] = [];
+
+  lines.push(`  ${c.yellow("Query budget")}  ${c.bold(finding.normalized)}`);
+
+  if (finding.totalDurationMs !== undefined) {
+    lines.push(`     ${c.dim(`${finding.totalDurationMs.toFixed(1)}ms spent querying`)}`);
+  }
+
+  // No `at` line: the finding is the total, and there is no one line to blame.
+  // The breakdown is what tells the reader where the budget went.
+  for (const row of finding.breakdown ?? []) {
+    lines.push(`     ${c.bold(`${row.count}×`)} ${truncateSql(row.normalized, 88)}`);
+  }
+
+  return lines.join("\n");
+}
+
 /** One finding as an indented block, without a trailing newline. */
 export function formatFinding(finding: Finding): string {
+  if (finding.type === "too_many_queries") return formatBudget(finding);
+
   const lines: string[] = [];
   const times = c.bold(`${finding.count}×`);
 
   lines.push(`  ${headline(finding)}  ${times} ${truncateSql(finding.normalized)}`);
   lines.push(`     ${c.dim("at")} ${c.cyan(formatCallSite(finding.callsite))}`);
+
+  // Only when it adds something. A query built and run in the same place has
+  // one origin, and printing it twice would read as two separate problems.
+  if (finding.builtAt !== undefined && !sameLine(finding.builtAt, finding.callsite)) {
+    lines.push(`     ${c.dim("built at")} ${c.dim(formatCallSite(finding.builtAt))}`);
+  }
 
   if (finding.totalDurationMs !== undefined) {
     lines.push(`     ${c.dim(`${finding.totalDurationMs.toFixed(1)}ms spent here`)}`);

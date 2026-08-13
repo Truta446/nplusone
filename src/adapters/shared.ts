@@ -10,7 +10,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- driver boundary */
 
 import { captureCallSite, type CallSite } from "../callsite.js";
-import { ambientCallSite } from "../callsite-context.js";
+import { ambientOrigin } from "../callsite-context.js";
 import { getOptions } from "../config.js";
 import { record } from "../scope.js";
 import type { StatementKind } from "../normalize.js";
@@ -76,23 +76,69 @@ export interface Observation {
   kind?: StatementKind | undefined;
 }
 
+/** What a driver adapter knows about where a query came from. */
+export interface CapturedOrigin {
+  /** The line to report and to group by. */
+  callsite: CallSite | undefined;
+  /**
+   * Where the builder was constructed, when an ORM adapter distinguished it
+   * from the line that executed the query. Undefined when there is nothing to
+   * add beyond `callsite`.
+   */
+  builtAt: CallSite | undefined;
+}
+
 /**
- * Captures the application frame, if attribution is enabled.
+ * Captures where the query came from, if attribution is enabled.
  *
  * An ORM adapter above us may already know the answer — see
- * {@link ambientCallSite}. Its value wins, because for a lazy ORM the stack at
+ * {@link ambientOrigin}. Its value wins, because for a lazy ORM the stack at
  * this point contains nothing but driver and ORM internals.
  */
+export function originNow(): CapturedOrigin {
+  const options = getOptions();
+  if (!options.captureStack) return { callsite: undefined, builtAt: undefined };
+
+  const ambient = ambientOrigin();
+  if (ambient !== undefined) {
+    return {
+      callsite: ambient.executedAt ?? ambient.builtAt,
+      builtAt: ambient.builtAt,
+    };
+  }
+
+  return {
+    callsite: captureCallSite({
+      ignore: options.ignoreCallSites,
+      depth: options.stackDepth,
+    }),
+    builtAt: undefined,
+  };
+}
+
+/** The single call site a driver adapter should report. */
 export function captureNow(): CallSite | undefined {
+  return originNow().callsite;
+}
+
+/**
+ * Captures the caller's frame for an ORM adapter, ignoring any ambient origin.
+ *
+ * An ORM adapter is the thing that *publishes* an origin, so it must read the
+ * real stack rather than whatever an enclosing query left behind — otherwise a
+ * query built while another one executes inherits the wrong line.
+ *
+ * `depth` exists because a chained call is captured on every link: the frame
+ * wanted is the immediate caller, and walking thirty frames on every `.where()`
+ * would multiply the one cost this library is careful about.
+ */
+export function captureBuildSite(depth?: number): CallSite | undefined {
   const options = getOptions();
   if (!options.captureStack) return undefined;
 
-  const ambient = ambientCallSite();
-  if (ambient !== undefined) return ambient;
-
   return captureCallSite({
     ignore: options.ignoreCallSites,
-    depth: options.stackDepth,
+    depth: depth ?? options.stackDepth,
   });
 }
 
@@ -113,7 +159,7 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  * error that the caller actually needs to see.
  */
 export function observe<T>(observation: Observation, execute: () => T): T {
-  const callsite = captureNow();
+  const { callsite, builtAt } = originNow();
   const started = performance.now();
 
   const commit = (): void => {
@@ -122,6 +168,7 @@ export function observe<T>(observation: Observation, execute: () => T): T {
       params: observation.params,
       kind: observation.kind,
       callsite,
+      builtAt,
       durationMs: performance.now() - started,
     });
   };
