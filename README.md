@@ -356,7 +356,7 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 150 tests, including real queries against node:sqlite
+npm test          # 156 tests, including real queries against node:sqlite
 npm run coverage  # 80% lines, 83% branches
 ```
 
@@ -390,6 +390,26 @@ found three bugs that fixtures never would have:
   burying real findings under ORM bookkeeping.
 - **Lazy ORMs** execute from a thenable, so the caller's frame is gone by the
   time the driver runs. Hence `nplusone/drizzle`.
+
+## Contributors
+
+This library is better than one person could have made it. Thank you:
+
+| | Contribution |
+| --- | --- |
+| [@milekv](https://github.com/milekv) | The **libSQL / Turso adapter** ([#13](https://github.com/Truta446/nplusone/pull/13)) — including the decision to record each `batch()` statement separately, which is what keeps a batch loop from hiding an N+1 |
+| [@TarekHassan1](https://github.com/TarekHassan1) | The **runnable Express + PostgreSQL example** ([#11](https://github.com/Truta446/nplusone/pull/11)) — `docker compose up`, hit two endpoints, see the difference |
+| [@blut-agent](https://github.com/blut-agent) | **Made the report's colour handling testable** ([#7](https://github.com/Truta446/nplusone/pull/7)) and covered every path — `NO_COLOR`, `TERM=dumb`, non-TTY and TTY |
+| [Mads Hansen](https://dev.to/madsstoumann) | Spotted that attribution names the wrong line when a query is built in one place and executed in another ([#12](https://github.com/Truta446/nplusone/issues/12)) — the bug behind the 0.6.0 fix |
+
+### Want to be on this list?
+
+There are [good first issues](https://github.com/Truta446/nplusone/labels/good%20first%20issue) open right now, and [`CONTRIBUTING.md`](./CONTRIBUTING.md) walks through writing an adapter — they are about 100 lines each and share the helpers in `shared.ts`.
+
+Two things worth knowing before you start:
+
+- **Measure before you theorise.** Nearly every real bug in this library was found by dumping the actual stack or running against a real database, and several plausible theories died that way. If an issue asks you to post a measurement, that measurement is valuable even if you stop there.
+- **Say what you chose and why.** Most of these decisions are trade-offs rather than right answers. A PR that explains the reasoning gets reviewed faster than one that hides it.
 
 ## License
 
