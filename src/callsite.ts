@@ -87,6 +87,18 @@ export function captureCallSite(options: CaptureOptions = {}): CallSite | undefi
   return undefined;
 }
 
+/**
+ * True when two sites point at the same line, ignoring the column.
+ *
+ * Grouping wants the column — two calls on one line are two calls. A reader
+ * does not: telling someone a query was built at `orders.ts:61:31` and executed
+ * at `orders.ts:61:44` is noise dressed as precision.
+ */
+export function sameLine(a: CallSite | undefined, b: CallSite | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.file === b.file && a.line === b.line;
+}
+
 /** A stable key for grouping — two queries from the same line share it. */
 export function callSiteKey(site: CallSite | undefined): string {
   if (site === undefined) return "<unknown>";

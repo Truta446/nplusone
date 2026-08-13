@@ -98,9 +98,13 @@ export async function expectNoNPlusOne(
   const { includeDuplicates = false, name = "this block", ...rest } = options;
 
   const result = await captureQueries(fn, { ...rest, name });
-  const relevant = includeDuplicates
-    ? result.findings
-    : result.findings.filter((f) => f.type === "n_plus_one");
+  // `too_many_queries` is never included, even with `includeDuplicates`: it is
+  // a budget, not a repetition, and `expectQueryCount()` is the assertion for
+  // it. Folding it in here would make this helper fail for a reason its name
+  // does not describe.
+  const relevant = result.findings.filter(
+    (f) => f.type === "n_plus_one" || (includeDuplicates && f.type === "duplicate"),
+  );
 
   if (relevant.length > 0) {
     throw new NPlusOneAssertionError(relevant, name);

@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
