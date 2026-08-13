@@ -15,13 +15,61 @@
  * result: the SQL still comes from the driver, and the line comes from here.
  *
  * It works for every dialect, since it never touches the driver itself.
+ *
+ * ## Which building call
+ *
+ * Capturing only the *first* call in the chain names the wrong line whenever a
+ * query is built somewhere other than where it runs:
+ *
+ * ```ts
+ * function baseQuery() {
+ *   return db.select().from(items);            // captured — but shared by every caller
+ * }
+ * for (const order of orders) {
+ *   await baseQuery().where(eq(items.orderId, order.id));   // the N+1 lives here
+ * }
+ * ```
+ *
+ * Every chained call is therefore captured, and the last one before execution
+ * wins — `.where()` above *is* called from the loop, synchronously, so the
+ * frame is there for the taking. The construction site is kept alongside it and
+ * reported when the two differ.
+ *
+ * It does not recover everything. If the whole chain lives inside the helper,
+ * the last building call is still in the helper and there is no application
+ * frame anywhere that says otherwise. Keeping both origins is what makes that
+ * case honest rather than confidently wrong.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- ORM boundary */
 
-import { runWithCallSite } from "../callsite-context.js";
-import { captureNow } from "./shared.js";
+import { runWithOrigin } from "../callsite-context.js";
+import { captureBuildSite } from "./shared.js";
 import type { CallSite } from "../callsite.js";
+
+/**
+ * How deep to walk when capturing a chained call.
+ *
+ * Shallow on purpose. A chained call made by application code puts that frame
+ * at the top of the stack, so a handful is plenty, and this runs on every link
+ * of every chain. When nothing application-owned turns up that shallow the
+ * previous site is kept, so the failure mode is "no new information" rather
+ * than a wrong line.
+ */
+const CHAIN_DEPTH = 8;
+
+/**
+ * The two origins of one query, refined as its chain is built.
+ *
+ * Mutable, and deliberately so: Drizzle's builders return `this`, so a builder
+ * reused across loop iterations is the same object every time and the only way
+ * to notice the loop is to update in place.
+ */
+interface Origin {
+  readonly builtAt: CallSite | undefined;
+  /** The application frame nearest execution seen so far. */
+  latest: CallSite | undefined;
+}
 
 /**
  * Methods whose invocation means "the query is being executed now".
@@ -44,10 +92,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Wraps a query builder so that every chained call keeps carrying `callsite`,
- * and executing the query publishes it.
+ * Wraps a query builder so that every chained call refines `origin`, and
+ * executing the query publishes it.
  */
-function wrapChain<T>(value: T, callsite: CallSite | undefined): T {
+function wrapChain<T>(value: T, origin: Origin): T {
   if (!isPlainObject(value)) return value;
 
   return new Proxy(value as object, {
@@ -55,20 +103,39 @@ function wrapChain<T>(value: T, callsite: CallSite | undefined): T {
       const inner = Reflect.get(target, property, receiver);
       if (typeof inner !== "function") return inner;
 
-      // `.then()` / `.execute()` — the query is running; publish the call site
-      // so the driver adapter underneath picks it up instead of the stack.
+      // `.then()` / `.execute()` — the query is running; publish the origin so
+      // the driver adapter underneath picks it up instead of the stack. Read
+      // `latest` here rather than closing over it: a reused builder is refined
+      // between construction and this moment.
       if (typeof property === "string" && EXECUTION_METHODS.has(property)) {
         return function execute(this: unknown, ...args: unknown[]): unknown {
-          return runWithCallSite(callsite, () => inner.apply(target, args));
+          return runWithOrigin(
+            { builtAt: origin.builtAt, executedAt: origin.latest },
+            () => inner.apply(target, args),
+          );
         };
       }
 
-      // `.from()`, `.where()`, `.limit()` — still building. Some return a new
-      // builder, some return `this`; both have to keep the call site.
+      // `.from()`, `.where()`, `.limit()` — still building, and still on the
+      // caller's stack. Some return a new builder, some return `this`; both
+      // have to carry the origin forward.
       return function chain(this: unknown, ...args: unknown[]): unknown {
+        const site = captureBuildSite(CHAIN_DEPTH);
         const result = inner.apply(target, args);
-        if (result === target) return receiver;
-        return wrapChain(result, callsite);
+
+        if (result === target) {
+          // Same object, so the same origin: update it in place, which is what
+          // makes a builder reused inside a loop point at the loop.
+          if (site !== undefined) origin.latest = site;
+          return receiver;
+        }
+
+        // A new builder. Give it an origin of its own so refining the child
+        // never rewrites the parent's — two queries can branch off one base.
+        return wrapChain(result, {
+          builtAt: origin.builtAt,
+          latest: site ?? origin.latest,
+        });
       };
     },
   }) as T;
@@ -86,7 +153,7 @@ function wrapNamespace<T extends object>(target: T): T {
 
       if (typeof inner === "function") {
         return function start(this: unknown, ...args: unknown[]): unknown {
-          const callsite = captureNow();
+          const callsite = captureBuildSite();
 
           // `db.transaction(cb)` hands a scoped db to the callback; that one
           // needs instrumenting too, or every query inside a transaction goes
@@ -106,7 +173,7 @@ function wrapNamespace<T extends object>(target: T): T {
 
           const result = inner.apply(object, forwarded);
           if (result === object) return receiver;
-          return wrapChain(result, callsite);
+          return wrapChain(result, { builtAt: callsite, latest: callsite });
         };
       }
 

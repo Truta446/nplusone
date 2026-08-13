@@ -5,6 +5,92 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-08-13
+
+### Fixed
+
+- **Attribution named the wrong line when a query was built and executed in
+  different places** (#12). The Drizzle adapter captured the call site at the
+  *first* call in the chain, which is correct only when the query is built where
+  it runs. It usually is not:
+
+  ```ts
+  function baseQuery() {
+    return db.select().from(items);            // reported — shared by every caller
+  }
+  for (const order of orders) {
+    await baseQuery().where(eq(items.orderId, order.id));   // the N+1 is here
+  }
+  ```
+
+  Measured against the three shapes before the fix: a helper-built query was
+  attributed to the helper, a reused builder to the line outside the loop, and
+  only inline construction was right. The first two were **confidently wrong**,
+  which is the worst failure mode for a tool like this — it sends someone to a
+  file that is not the problem, with a line number that looks authoritative.
+
+  Every chained call is now captured, and the one nearest execution wins:
+  `.where()` above *is* called from the loop, synchronously, so the frame is
+  there. The construction site is kept as `builtAt` and printed underneath when
+  the two differ:
+
+  ```
+    N+1 query  10× SELECT * FROM order_items WHERE order_id = ?
+       at src/routes/orders.ts:38  (loadOrders)
+       built at src/repositories/items.ts:12  (baseQuery)
+  ```
+
+  It does not recover everything, and the README says so: if the whole chain
+  lives inside the helper, no application frame anywhere names the loop. Keeping
+  both origins is what makes that case honest instead of misleading.
+
+  Raised by Mads Hansen in the comments of [the write-up](https://dev.to/truta446/your-orm-is-hiding-the-line-that-caused-the-slow-query-egm).
+
+### Added
+
+- **`maxQueries`** — a per-scope query budget (#3). Not every expensive request
+  repeats itself: running the detector against a real admin API turned up a
+  route issuing fourteen *different* statements to load one record, and the
+  detector said nothing, because nothing repeated.
+
+  ```ts
+  configure({ maxQueries: 10 });
+  ```
+
+  ```
+  nplusone 1 finding in GET /dashboard — 8 queries, 9ms
+
+    Query budget  8 queries in one scope (limit 6)
+       7.2ms spent querying
+       1× SELECT count(*) FROM orders
+       1× SELECT count(*) FROM order_items
+       …
+  ```
+
+  Two deliberate choices. It prints **no call site**, because there is no single
+  line to blame — a breakdown of where the budget went is the honest answer, and
+  picking an arbitrary frame would not be. And it **never throws**, whatever
+  `mode` says: the check runs when the scope closes, which for a request is a
+  `finally` block or a `finish` handler, where throwing would replace a real
+  error or crash the process. `expectQueryCount()` remains the way to fail a
+  test on a budget.
+
+  Off by default, so upgrading adds no new output.
+
+- `Finding.builtAt`, `Finding.breakdown` and `RecordedQuery.builtAt`.
+- `runWithOrigin()`, `ambientOrigin()` and the `QueryOrigin` type are exported,
+  so an adapter for an ORM this package does not ship can publish both origins.
+  `runWithCallSite()` still works and is unchanged in meaning.
+
+### Changed
+
+- `expectNoNPlusOne({ includeDuplicates: true })` no longer fails on a budget
+  finding. Its name promises one thing, and failing for a different reason
+  would be a confusing way to learn about a new option.
+- The README's coverage figure was stale — it claimed 96% lines and 95%
+  functions; the command beside it reports 80% and 75%. Corrected rather than
+  quietly dropped.
+
 ## [0.5.1] — 2026-08-10
 
 ### Changed
@@ -110,6 +196,7 @@ Initial release.
 - Test helpers (`expectNoNPlusOne`, `expectQueryCount`) so a finding becomes a
   CI regression gate.
 
+[0.6.0]: https://github.com/Truta446/nplusone/releases/tag/v0.6.0
 [0.5.1]: https://github.com/Truta446/nplusone/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Truta446/nplusone/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Truta446/nplusone/releases/tag/v0.4.0

@@ -50,6 +50,17 @@ export { normalizeSql, statementKind, truncateSql } from "./normalize.js";
 
 export { captureCallSite, formatCallSite, callSiteKey } from "./callsite.js";
 
+// For anyone writing an adapter for an ORM this package does not ship: publish
+// the origin while the query executes and the driver adapter will prefer it
+// over its own stack walk. See src/adapters/drizzle.ts for the worked example.
+export {
+  runWithOrigin,
+  runWithCallSite,
+  ambientOrigin,
+  ambientCallSite,
+  type QueryOrigin,
+} from "./callsite-context.js";
+
 export type {
   CallSite,
   Finding,
@@ -59,5 +70,6 @@ export type {
   RecordedQuery,
   ResolvedOptions,
   ScopeSummary,
+  StatementCount,
   StatementKind,
 } from "./types.js";

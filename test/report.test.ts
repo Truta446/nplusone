@@ -26,8 +26,10 @@ function makeFinding(
     normalized: "SELECT * FROM items WHERE order_id = ?",
     kind: "select",
     callsite: { file: "app.ts", line: 42, column: 5, function: "getItems" },
+    builtAt: undefined,
     scope: "GET /items",
     totalDurationMs: 250,
+    breakdown: undefined,
     ...overrides,
   };
 }
