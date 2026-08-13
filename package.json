@@ -78,6 +78,12 @@
       "require": "./dist/adapters/sqlite.js",
       "default": "./dist/adapters/sqlite.js"
     },
+    "./libsql": {
+      "types": "./dist/adapters/libsql.d.ts",
+      "import": "./dist/adapters/libsql.js",
+      "require": "./dist/adapters/libsql.js",
+      "default": "./dist/adapters/libsql.js"
+    },
     "./prisma": {
       "types": "./dist/adapters/prisma.d.ts",
       "import": "./dist/adapters/prisma.js",
