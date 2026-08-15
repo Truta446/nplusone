@@ -29,6 +29,8 @@ interface LibsqlStatementObject {
 interface LibsqlClient {
   execute(...args: any[]): any;
   batch(...args: any[]): any;
+  transaction?(...args: any[]): any;
+  executeMultiple?(...args: any[]): any;
 }
 
 function paramsOf(args: LibsqlArgs | undefined): readonly unknown[] | undefined {
@@ -46,31 +48,62 @@ function observationOf(statement: unknown): Observation | undefined {
   return { sql, params: paramsOf(args) };
 }
 
-function wrapExecute(original: AnyFn): AnyFn {
-  return function patchedExecute(this: unknown, ...args: unknown[]): unknown {
-    if (disabled()) return original.apply(this, args);
+function wrapExecute(isActive: () => boolean): (original: AnyFn) => AnyFn {
+  return function make(original: AnyFn): AnyFn {
+    return function patchedExecute(this: unknown, ...args: unknown[]): unknown {
+      if (!isActive() || disabled()) return original.apply(this, args);
 
-    const observation = observationOf(args[0]);
-    if (observation === undefined) return original.apply(this, args);
+      const observation = observationOf(args[0]);
+      if (observation === undefined) return original.apply(this, args);
 
-    return observe(observation, () => original.apply(this, args));
+      return observe(observation, () => original.apply(this, args));
+    };
   };
 }
 
-function wrapBatch(original: AnyFn): AnyFn {
-  return function patchedBatch(this: unknown, ...args: unknown[]): unknown {
-    if (disabled()) return original.apply(this, args);
+function wrapBatch(isActive: () => boolean): (original: AnyFn) => AnyFn {
+  return function make(original: AnyFn): AnyFn {
+    return function patchedBatch(this: unknown, ...args: unknown[]): unknown {
+      if (!isActive() || disabled()) return original.apply(this, args);
 
-    const statements = args[0];
-    if (!Array.isArray(statements)) return original.apply(this, args);
+      const statements = args[0];
+      if (!Array.isArray(statements)) return original.apply(this, args);
 
-    const observations = statements
-      .map(observationOf)
-      .filter((observation): observation is Observation => observation !== undefined);
+      const observations = statements
+        .map(observationOf)
+        .filter((observation): observation is Observation => observation !== undefined);
 
-    // One round trip, several statements — see observeBatch() for why they are
-    // not each wrapped in their own observe().
-    return observeBatch(observations, () => original.apply(this, args));
+      // One round trip, several statements — see observeBatch() for why they are
+      // not each wrapped in their own observe().
+      return observeBatch(observations, () => original.apply(this, args));
+    };
+  };
+}
+
+function thenableOf(value: unknown): Promise<unknown> | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const then = (value as { then?: unknown }).then;
+  if (typeof then !== "function") return undefined;
+  return value as Promise<unknown>;
+}
+
+/**
+ * `executeMultiple` takes a semicolon-separated script. Recording it as N
+ * statements by splitting on `;` is wrong the moment a semicolon appears
+ * inside a string literal or a trigger body. A migration script is also not
+ * the kind of thing an N+1 detector is for, so the whole script is one
+ * statement — visible, but never exploded into a false N+1.
+ */
+function wrapExecuteMultiple(isActive: () => boolean): (original: AnyFn) => AnyFn {
+  return function make(original: AnyFn): AnyFn {
+    return function patchedExecuteMultiple(this: unknown, ...args: unknown[]): unknown {
+      if (!isActive() || disabled()) return original.apply(this, args);
+
+      const sql = args[0];
+      if (typeof sql !== "string") return original.apply(this, args);
+
+      return observe({ sql }, () => original.apply(this, args));
+    };
   };
 }
 
@@ -101,18 +134,65 @@ export function instrumentLibsql(client: LibsqlClient): () => void {
 
   const target = client as unknown as Record<string, any>;
   const restores: (() => void)[] = [];
+  let active = true;
+  const isActive = (): boolean => active;
+  const executeWrap = wrapExecute(isActive);
+  const batchWrap = wrapBatch(isActive);
+  const executeMultipleWrap = wrapExecuteMultiple(isActive);
 
-  if (patchMethod(target, "execute", wrapExecute)) {
-    restores.push(() => {
-      unpatchMethod(target, "execute");
-    });
+  function remember(object: Record<string, any>, name: string, wrap: (original: AnyFn) => AnyFn): void {
+    if (!active) return;
+    if (patchMethod(object, name, wrap)) {
+      restores.push(() => {
+        unpatchMethod(object, name);
+      });
+    }
   }
 
-  if (patchMethod(target, "batch", wrapBatch)) {
-    restores.push(() => {
-      unpatchMethod(target, "batch");
-    });
+  function patchQueryMethods(object: Record<string, any>, retainRestore: boolean): void {
+    if (retainRestore) {
+      remember(object, "execute", executeWrap);
+      remember(object, "batch", batchWrap);
+      if (typeof object.executeMultiple === "function") {
+        remember(object, "executeMultiple", executeMultipleWrap);
+      }
+      return;
+    }
+
+    // Transaction objects are short-lived. Patch them, but do not retain
+    // restore closures that would pin every completed transaction until the
+    // adapter itself is restored. The wrappers no-op once `active` is false.
+    if (!active) return;
+    patchMethod(object, "execute", executeWrap);
+    patchMethod(object, "batch", batchWrap);
+    if (typeof object.executeMultiple === "function") {
+      patchMethod(object, "executeMultiple", executeMultipleWrap);
+    }
   }
 
-  return combineRestores(restores);
+  function wrapTransaction(original: AnyFn): AnyFn {
+    return function patchedTransaction(this: unknown, ...args: unknown[]): unknown {
+      const result = original.apply(this, args);
+
+      const attach = (transaction: unknown): unknown => {
+        if (active && typeof transaction === "object" && transaction !== null) {
+          patchQueryMethods(transaction as Record<string, any>, false);
+        }
+        return transaction;
+      };
+
+      const pending = thenableOf(result);
+      return pending === undefined ? attach(result) : pending.then(attach);
+    };
+  }
+
+  patchQueryMethods(target, true);
+  if (typeof target.transaction === "function") {
+    remember(target, "transaction", wrapTransaction);
+  }
+
+  return () => {
+    active = false;
+    combineRestores(restores)();
+  };
 }
