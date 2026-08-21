@@ -70,6 +70,12 @@ export interface Finding {
    * Undefined for every other finding type.
    */
   breakdown: readonly StatementCount[] | undefined;
+  /**
+   * A sample of the distinct parameter sets that made this an N+1, serialized
+   * for display and truncated. Populated only when `sampleValues` is on and the
+   * driver reported parameters; always undefined for other finding types.
+   */
+  values: readonly string[] | undefined;
 }
 
 export interface ScopeSummary {
@@ -168,6 +174,18 @@ export interface Options {
    * fail a test on a budget, use `expectQueryCount()`.
    */
   maxQueries?: number;
+  /**
+   * Show up to this many of the differing values on an N+1 finding, so it can
+   * be reproduced. `0` — the default — shows none.
+   *
+   * **Off by default on purpose.** Parameters are exactly where email
+   * addresses, tokens and personal data live, and this report goes to stderr
+   * and from there into CI logs. Everything else the reporter prints is either
+   * your own source location or SQL with its literals already replaced by `?`.
+   * This is the one option that puts real data in the output, so turning it on
+   * is a decision you make rather than one an upgrade makes for you.
+   */
+  sampleValues?: number;
 }
 
 export interface ResolvedOptions {
@@ -186,4 +204,5 @@ export interface ResolvedOptions {
   autoScope: boolean;
   autoScopeIdleMs: number;
   maxQueries: number | undefined;
+  sampleValues: number;
 }

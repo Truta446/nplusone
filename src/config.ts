@@ -18,6 +18,7 @@ function defaults(): ResolvedOptions {
     autoScope: false,
     autoScopeIdleMs: 50,
     maxQueries: undefined,
+    sampleValues: 0,
   };
 }
 
@@ -48,6 +49,7 @@ export function configure(options: Options): ResolvedOptions {
     autoScope: options.autoScope ?? current.autoScope,
     autoScopeIdleMs: options.autoScopeIdleMs ?? current.autoScopeIdleMs,
     maxQueries: options.maxQueries ?? current.maxQueries,
+    sampleValues: options.sampleValues ?? current.sampleValues,
   });
 }
 

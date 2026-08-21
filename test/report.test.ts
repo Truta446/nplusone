@@ -30,6 +30,7 @@ function makeFinding(
     scope: "GET /items",
     totalDurationMs: 250,
     breakdown: undefined,
+    values: undefined,
     ...overrides,
   };
 }
