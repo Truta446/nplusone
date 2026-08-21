@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
@@ -117,11 +117,13 @@
     "prepublishOnly": "npm run build",
     "coverage": "tsc -p tsconfig.json && node --test --experimental-test-coverage \"dist-test/test/*.test.js\"",
     "lint": "biome lint src test",
-    "lint:fix": "biome lint --write src test"
+    "lint:fix": "biome lint --write src test",
+    "bench": "npm run build && node bench/index.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
     "@types/node": "^26.1.2",
+    "kysely": "^0.29.5",
     "typescript": "^7.0.2"
   }
 }

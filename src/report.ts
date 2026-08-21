@@ -70,6 +70,14 @@ export function formatFinding(finding: Finding): string {
     lines.push(`     ${c.dim(`${finding.totalDurationMs.toFixed(1)}ms spent here`)}`);
   }
 
+  if (finding.values !== undefined && finding.values.length > 0) {
+    const shown = finding.values.join(", ");
+    const rest = finding.count - finding.values.length;
+    lines.push(
+      `     ${c.dim("values:")} ${shown}${rest > 0 ? c.dim(` … and ${rest} more`) : ""}`,
+    );
+  }
+
   if (finding.type === "duplicate") {
     lines.push(
       `     ${c.dim("identical parameters — the repeats returned the same rows")}`,

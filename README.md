@@ -34,7 +34,7 @@ nplusone 2 findings in GET /orders — 10 queries, 14ms
 <tr><td>🔌</td><td><b>Works with your ORM, whatever it is.</b> It watches the database driver, not the abstraction on top.</td></tr>
 <tr><td>📍</td><td><b>Points at your code.</b> Not "51 queries ran" — <i>this line ran 50 of them</i>.</td></tr>
 <tr><td>🧪</td><td><b>CI gate.</b> <code>expectNoNPlusOne()</code> turns a debugging session into a regression test.</td></tr>
-<tr><td>🪶</td><td><b>Zero runtime dependencies.</b> 29 kB packed.</td></tr>
+<tr><td>🪶</td><td><b>Zero runtime dependencies.</b> 68 kB packed.</td></tr>
 <tr><td>🔒</td><td><b>Off in production by default</b>, so nobody pays for stack capture by accident.</td></tr>
 </table>
 
@@ -101,7 +101,7 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **TypeORM** | via its driver | ✅ |
 | **MikroORM** | via its driver (Knex) | ✅ |
 | **Sequelize** | via its driver | ✅ |
-| **Kysely** | via its driver | ✅ |
+| **Kysely** | via its driver — [no adapter needed](#why-kysely-needs-no-adapter) | ✅ |
 | **Mongoose** | via the MongoDB driver | ✅ |
 | Anything else | [10 lines with `record()`](#other-drivers) | 🔧 |
 
@@ -110,6 +110,23 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 > **Prisma** does not use `pg` or `mysql2` at all — it talks to the database through its own query engine, so driver-level instrumentation cannot see it. Hence a dedicated adapter.
 >
 > **Drizzle** *is* detected through its driver, but without attribution. A Drizzle query is a lazy thenable, so the execution is triggered by the runtime calling `.then()` — measured against Drizzle 0.45, the stack at that point holds twelve frames and not one of them belongs to your code. Adding `instrumentDrizzle(db)` captures the call site while the query is still being built, and the driver adapter uses it. Use both together: the driver reports the SQL, Drizzle reports the line.
+
+### Why Kysely needs no adapter
+
+Kysely looks like it should have the same problem as Drizzle, and it does not. Measured against Kysely 0.29 on a synchronous driver (`node:sqlite`) and an asynchronous one (`pg`), the reported line was correct in every shape tried — an inline loop, a helper-built query, `executeTakeFirst`, a raw `sql` template tag, and inside a transaction. Including the helper-built case that Drizzle gets wrong:
+
+```ts
+function baseQuery() {
+  return db.selectFrom("items").selectAll();
+}
+for (const order of orders) {
+  await baseQuery().where("order_id", "=", order.id).execute();   // <- correctly blamed
+}
+```
+
+The reason is structural rather than lucky. A Kysely builder is **not** a thenable: nothing runs until you call `.execute()` yourself, and V8's async stack traces keep the frame that awaited it. Drizzle's `.then()` is called by the runtime from a microtask, so there is no such frame to keep.
+
+That is a claim about a library this one does not control, so `test/kysely.test.ts` pins it: if a future Kysely defers execution differently, the suite fails rather than the README quietly becoming wrong.
 
 <details>
 <summary><b>Setup for each driver</b></summary>
@@ -314,6 +331,24 @@ It prints no call site, because there isn't one to print — the total is the fi
 
 It is **off by default** and it never throws, whatever `mode` says: the check runs when the scope closes, which for a request means a `finally` block or a `finish` handler, and throwing from there would replace a real error or take the process down. To fail a test on a budget, use [`expectQueryCount()`](#guarding-it-in-ci).
 
+### Seeing which values varied
+
+A finding names the shape, the count and the line. `sampleValues` adds the values, which is how you tell a loop over ten rows from a loop over ten thousand, and how you reproduce it in a console:
+
+```ts
+configure({ sampleValues: 5 });
+```
+
+```
+  N+1 query  50× SELECT * FROM order_items WHERE order_id = ?
+     at src/routes/orders.ts:38  (loadOrders)
+     values: [1], [2], [3], [4], [5] … and 45 more
+```
+
+**Off by default, and this one is not about noise.** Parameters are exactly where email addresses, tokens and personal data live, and this report goes to stderr and from there into CI logs. Everything else the reporter prints is either your own source location or SQL whose literals are already replaced by `?`. This is the only option that puts real data in the output, so turning it on should be your decision rather than an upgrade's.
+
+Values are truncated, and never shown for a duplicate finding — its parameters are identical by definition, so a sample of them says nothing.
+
 ## Configuration
 
 ```ts
@@ -325,6 +360,7 @@ configure({
   ignore: [/pg_catalog/],  // skip queries matching these
   captureStack: true,      // attribute queries to a line of code
   maxQueries: 10,          // report a scope over this many queries (off by default)
+  sampleValues: 5,         // show up to 5 differing values on an N+1 (off by default)
   autoScope: false,        // group unscoped queries heuristically (see above)
   autoScopeIdleMs: 50,     // idle gap that ends an inferred scope
   onFinding: (f) => metrics.increment("n_plus_one", { scope: f.scope }),
@@ -356,13 +392,29 @@ driver.execute = async function (sql, params) {
 **Contributions very welcome** — the adapters in [`src/adapters/`](./src/adapters) are around 100 lines each and share the helpers in `shared.ts`.
 
 ```sh
-npm test          # 156 tests, including real queries against node:sqlite
+npm test          # 177 tests, including real queries against node:sqlite
 npm run coverage  # 80% lines, 83% branches
 ```
 
 ## Cost
 
-The real expense is capturing a stack trace per query, which is why the detector is disabled when `NODE_ENV === "production"` unless you explicitly enable it. Set `captureStack: false` to keep detection while dropping the "which line" attribution — cheap enough to leave running in staging.
+The real expense is capturing a stack trace per query. That used to be an assertion; `npm run bench` makes it a number:
+
+```
+node v24 · 20,000 queries × 9 samples (median)
+
+  detector disabled                    20 ns/query            —   the floor
+  captureStack: false                1488 ns/query     +1468 ns   detection without attribution
+  captureStack: true (default)      12476 ns/query    +12456 ns   stackDepth 30, the shipped default
+  captureStack, stackDepth: 8        9869 ns/query     +9849 ns   a shallower walk
+  instrumentDrizzle, 4-call chain   48579 ns/query    +48559 ns   one capture per chained call
+```
+
+Read the gaps, not the absolutes — those move with hardware and Node version. Three things worth taking from it:
+
+- **Attribution is ~90% of the cost.** Turning it off with `captureStack: false` keeps detection and makes the detector roughly eight times cheaper — cheap enough to leave running in staging.
+- **`instrumentDrizzle` costs about four times a plain query**, because fixing attribution for helper-built queries ([#12](https://github.com/Truta446/nplusone/issues/12)) means capturing on every chained call rather than once. That is the price of a correct line number for Drizzle, it is paid in development only, and [#23](https://github.com/Truta446/nplusone/issues/23) is about bringing it down.
+- **Even the default is ~12µs per query.** A request issuing fifty queries pays under a millisecond. That is invisible in development and is why the detector is disabled when `NODE_ENV === "production"` unless you explicitly enable it.
 
 Scopes retain up to 10,000 queries each; past that, counting continues but individual queries stop being kept, so a long-lived scope cannot grow without bound.
 
@@ -397,6 +449,7 @@ This library is better than one person could have made it. Thank you:
 
 | | Contribution |
 | --- | --- |
+| [@snowyukitty](https://github.com/snowyukitty) | **Made libSQL transactions visible** ([#22](https://github.com/Truta446/nplusone/pull/22)) — queries inside `transaction()` were being recorded nowhere at all, which reads as a clean bill of health |
 | [@milekv](https://github.com/milekv) | The **libSQL / Turso adapter** ([#13](https://github.com/Truta446/nplusone/pull/13)) — including the decision to record each `batch()` statement separately, which is what keeps a batch loop from hiding an N+1 |
 | [@TarekHassan1](https://github.com/TarekHassan1) | The **runnable Express + PostgreSQL example** ([#11](https://github.com/Truta446/nplusone/pull/11)) — `docker compose up`, hit two endpoints, see the difference |
 | [@blut-agent](https://github.com/blut-agent) | **Made the report's colour handling testable** ([#7](https://github.com/Truta446/nplusone/pull/7)) and covered every path — `NO_COLOR`, `TERM=dumb`, non-TTY and TTY |

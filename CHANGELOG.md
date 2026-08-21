@@ -5,18 +5,92 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] — 2026-08-21
 
 ### Fixed
 
 - **libSQL queries inside `transaction()` and `executeMultiple()` were invisible**
-  (#15). The adapter patched only the client's `execute` / `batch`. A
-  `transaction()` object has its own copies of those methods, so an N+1 inside
-  a write transaction looked like a clean bill of health. `transaction()` now
-  wraps `execute` / `batch` on the object it resolves to, and `commit` /
-  `rollback` stay untouched. `executeMultiple` is recorded as one statement —
-  the whole script — because splitting on `;` is wrong inside string literals
-  and trigger bodies.
+  (#22, closes #15). The adapter patched only the client's `execute` / `batch`.
+  A `transaction()` object has its own copies of those methods, so an N+1 inside
+  a write transaction looked like a clean bill of health — measured against a
+  real client, six queries issued and zero recorded. `transaction()` now wraps
+  `execute` / `batch` on the object it resolves to, and `commit` / `rollback`
+  stay untouched. `executeMultiple` is recorded as one statement — the whole
+  script — because splitting on `;` is wrong inside string literals and trigger
+  bodies.
+
+  Thanks to @snowyukitty for the contribution, and for the detail that a quicker
+  fix would have missed: a transaction is patched without retaining a restore
+  closure for it, because keeping one per transaction would pin every completed
+  transaction for the life of the process. The wrappers go quiet after `restore()`
+  instead.
+
+### Added
+
+- **`sampleValues`** — show the values that differed on an N+1 (#19), so a
+  finding can be reproduced and a loop over ten rows can be told from a loop
+  over ten thousand:
+
+  ```
+    N+1 query  50× SELECT * FROM order_items WHERE order_id = ?
+       at src/routes/orders.ts:38  (loadOrders)
+       values: [1], [2], [3], [4], [5] … and 45 more
+  ```
+
+  **Off by default, and not because of noise.** Parameters are exactly where
+  email addresses, tokens and personal data live, and this report goes to stderr
+  and from there into CI logs. Everything else the reporter prints is either your
+  own source location or SQL whose literals are already `?`. This is the only
+  option that puts real data in the output, so turning it on should be a decision
+  you make rather than one an upgrade makes for you.
+
+  Values are truncated, and never attached to a duplicate finding — its
+  parameters are identical by definition, so a sample of them says nothing.
+
+- **`npm run bench`** (#16) — the cost of detection, as a number instead of a
+  claim the README had been making unmeasured:
+
+  ```
+  node v24 · 20,000 queries × 9 samples (median)
+
+    detector disabled                    20 ns/query            —
+    captureStack: false                1488 ns/query     +1468 ns
+    captureStack: true (default)      12476 ns/query    +12456 ns
+    captureStack, stackDepth: 8        9869 ns/query     +9849 ns
+    instrumentDrizzle, 4-call chain   48579 ns/query    +48559 ns
+  ```
+
+  Attribution is about 90% of what the detector costs, and `instrumentDrizzle`
+  pays it four times over because the 0.6.0 fix for #12 captures on every chained
+  call. Both were true before this release; now they are visible. #23 tracks
+  bringing them down, including a measurement showing the obvious optimisation
+  is worth about a third rather than the order of magnitude it is usually
+  credited with.
+
+### Changed
+
+- **Kysely needs no adapter, and the README now says so with the measurement
+  behind it** (closes #2). The issue assumed Kysely would fail the way Drizzle
+  does. Measured against Kysely 0.29 on both a synchronous driver (`node:sqlite`)
+  and an asynchronous one (`pg`), the reported line was correct in every shape
+  tried — inline loop, helper-built query, `executeTakeFirst`, raw `sql` template,
+  and inside a transaction — including the helper-built case Drizzle gets wrong.
+
+  The reason is structural rather than lucky: a Kysely builder is not a thenable,
+  so `.execute()` is called by your code and V8's async stack traces keep that
+  frame. Drizzle's `.then()` is called by the runtime from a microtask, and there
+  is no frame to keep.
+
+  Rather than close the issue on a claim, `test/kysely.test.ts` pins it against
+  a real Kysely, so a future version that defers execution differently fails the
+  suite instead of quietly making the README wrong. `kysely` is a devDependency
+  now; the package still has zero runtime dependencies.
+
+- Two stale numbers in the README corrected, both found by running the command
+  printed next to them: the package is 68 kB packed rather than 29 kB, and the
+  test count is 177 rather than 156. Unverified numbers rot, which is most of
+  the argument for #16 existing at all.
+
 
 ## [0.6.0] — 2026-08-13
 
@@ -225,6 +299,7 @@ Initial release.
 - Test helpers (`expectNoNPlusOne`, `expectQueryCount`) so a finding becomes a
   CI regression gate.
 
+[0.7.0]: https://github.com/Truta446/nplusone/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Truta446/nplusone/releases/tag/v0.6.0
 [0.5.1]: https://github.com/Truta446/nplusone/releases/tag/v0.5.1
 [0.5.0]: https://github.com/Truta446/nplusone/releases/tag/v0.5.0
