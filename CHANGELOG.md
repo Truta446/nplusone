@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **libSQL queries inside `transaction()` and `executeMultiple()` were invisible**
+  (#15). The adapter patched only the client's `execute` / `batch`. A
+  `transaction()` object has its own copies of those methods, so an N+1 inside
+  a write transaction looked like a clean bill of health. `transaction()` now
+  wraps `execute` / `batch` on the object it resolves to, and `commit` /
+  `rollback` stay untouched. `executeMultiple` is recorded as one statement —
+  the whole script — because splitting on `;` is wrong inside string literals
+  and trigger bodies.
+
 ## [0.6.0] — 2026-08-13
 
 ### Fixed
