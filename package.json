@@ -21,7 +21,9 @@
     "database",
     "query",
     "mongodb",
-    "postgres.js"
+    "postgres.js",
+    "mssql",
+    "sqlserver"
   ],
   "license": "MIT",
   "author": "Juan Versolato <juan.versolato@outlook.com>",
