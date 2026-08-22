@@ -27,6 +27,7 @@ function makeFinding(
     kind: "select",
     callsite: { file: "app.ts", line: 42, column: 5, function: "getItems" },
     builtAt: undefined,
+    parent: undefined,
     scope: "GET /items",
     totalDurationMs: 250,
     breakdown: undefined,

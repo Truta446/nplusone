@@ -25,6 +25,15 @@ export interface RecordedQuery {
   durationMs: number | undefined;
 }
 
+/** The single query a repeated one is most likely looping over. */
+export interface ParentQuery {
+  /** The parent statement, literals replaced by `?`. */
+  normalized: string;
+  kind: StatementKind;
+  /** Where it was issued from. */
+  callsite: CallSite | undefined;
+}
+
 export type FindingType =
   /** The same query shape ran repeatedly from one line of code. */
   | "n_plus_one"
@@ -71,6 +80,13 @@ export interface Finding {
    */
   breakdown: readonly StatementCount[] | undefined;
   /**
+   * The query this one is most likely looping over — the "1" in N+1 — when
+   * there is a defensible candidate. A **guess**, and undefined far more often
+   * than not: see {@link Options.detectParent} for the signals it insists on
+   * and the ones it cannot see. Only ever set on an `n_plus_one` finding.
+   */
+  parent: ParentQuery | undefined;
+  /**
    * A sample of the distinct parameter sets that made this an N+1, serialized
    * for display and truncated. Populated only when `sampleValues` is on and the
    * driver reported parameters; always undefined for other finding types.
@@ -97,6 +113,15 @@ export interface ScopeSummary {
 }
 
 export type Mode = "warn" | "throw" | "silent";
+
+/**
+ * When the built-in reporter prints.
+ *
+ * `scope-close` is the accurate one: by then the loop has finished and the
+ * count is a measurement. The other two trade that accuracy for arriving while
+ * someone is still looking — see {@link Options.reportWhen}.
+ */
+export type ReportWhen = "scope-close" | "immediately" | "both";
 
 export interface Options {
   /**
@@ -135,6 +160,42 @@ export interface Options {
   onFinding?: (finding: Finding) => void;
   /** Called when a scope closes with at least one finding. */
   reporter?: (summary: ScopeSummary) => void;
+  /**
+   * When the built-in reporter prints. Default `"scope-close"`.
+   *
+   * A scope-close report is the accurate one, and for a request it arrives soon
+   * enough. For a ten-minute job it arrives at minute ten, and for a worker
+   * that never closes its scope it never arrives at all — which is what the
+   * other two modes are for:
+   *
+   * - `"immediately"` prints each finding the moment it is detected, and does
+   *   not print it again at close.
+   * - `"both"` prints at detection *and* in the scope-close report, where the
+   *   count is final.
+   *
+   * **An immediate report cannot state a count and does not pretend to.** A
+   * finding is born when the threshold is crossed — at 5 repetitions of a loop
+   * that may run 50 times — so it prints `≥5×` and says it is still counting.
+   *
+   * This governs the built-in reporter only. A custom {@link reporter} owns the
+   * output and is never bypassed; use {@link onFinding} for live handling
+   * alongside it.
+   */
+  reportWhen?: ReportWhen;
+  /**
+   * Look for the query an N+1 is looping over — the "1" — and report it under
+   * the finding. Default `true`.
+   *
+   * It is a **heuristic** and the report says so. A candidate is accepted only
+   * when it is the statement immediately before the loop's first query, it is a
+   * `select`, and it ran exactly once in the whole scope. When any of that
+   * fails, nothing is reported: a missing parent line costs the reader nothing,
+   * a wrong one sends them off to join two unrelated tables.
+   *
+   * The real evidence — whether the child's parameter came out of the parent's
+   * rows — is not available, because this library never sees result rows.
+   */
+  detectParent?: boolean;
   /**
    * Master switch. Defaults to `process.env.NODE_ENV !== "production"`, so the
    * cost never lands on a production process unless you ask for it.
@@ -199,6 +260,8 @@ export interface ResolvedOptions {
   stackDepth: number;
   onFinding: ((finding: Finding) => void) | undefined;
   reporter: ((summary: ScopeSummary) => void) | undefined;
+  reportWhen: ReportWhen;
+  detectParent: boolean;
   enabled: boolean;
   includeTransactionControl: boolean;
   autoScope: boolean;

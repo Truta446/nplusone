@@ -13,6 +13,8 @@ function defaults(): ResolvedOptions {
     stackDepth: 30,
     onFinding: undefined,
     reporter: undefined,
+    reportWhen: "scope-close",
+    detectParent: true,
     enabled: process.env["NODE_ENV"] !== "production",
     includeTransactionControl: false,
     autoScope: false,
@@ -43,6 +45,8 @@ export function configure(options: Options): ResolvedOptions {
     stackDepth: options.stackDepth ?? current.stackDepth,
     onFinding: options.onFinding ?? current.onFinding,
     reporter: options.reporter ?? current.reporter,
+    reportWhen: options.reportWhen ?? current.reportWhen,
+    detectParent: options.detectParent ?? current.detectParent,
     enabled: options.enabled ?? current.enabled,
     includeTransactionControl:
       options.includeTransactionControl ?? current.includeTransactionControl,

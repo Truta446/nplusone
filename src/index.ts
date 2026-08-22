@@ -44,7 +44,13 @@ export {
 
 export { NPlusOneError } from "./error.js";
 
-export { formatFinding, formatSummary, defaultReporter } from "./report.js";
+export {
+  formatFinding,
+  formatSummary,
+  defaultReporter,
+  reportFindingNow,
+  type FormatOptions,
+} from "./report.js";
 
 export { normalizeSql, statementKind, truncateSql } from "./normalize.js";
 
@@ -67,7 +73,9 @@ export type {
   FindingType,
   Mode,
   Options,
+  ParentQuery,
   RecordedQuery,
+  ReportWhen,
   ResolvedOptions,
   ScopeSummary,
   StatementCount,

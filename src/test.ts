@@ -8,7 +8,21 @@
 import { configure, getOptions, restoreConfig } from "./config.js";
 import { runInScope, type Scope } from "./scope.js";
 import { formatFinding } from "./report.js";
+import { applyBaseline } from "./baseline.js";
 import type { Finding, Options, RecordedQuery, ScopeSummary } from "./types.js";
+
+export {
+  applyBaseline,
+  baselineEntry,
+  baselineKey,
+  flushBaselines,
+  formatBaseline,
+  parseBaseline,
+  resetBaselines,
+  updating,
+  type BaselineEntry,
+  type BaselineFile,
+} from "./baseline.js";
 
 export interface CaptureResult {
   findings: readonly Finding[];
@@ -79,6 +93,33 @@ export interface AssertOptions extends Options {
   name?: string;
   /** Also fail on duplicate queries. Default `false`. */
   includeDuplicates?: boolean;
+  /**
+   * Path to a baseline file of findings that are already known and tolerated.
+   * New ones still fail.
+   *
+   * ```ts
+   * await expectNoNPlusOne(() => renderOrdersPage(userId), {
+   *   baseline: ".nplusone-baseline.json",
+   * });
+   * ```
+   *
+   * Write it — and add to it later — by running the suite with
+   * `NPLUSONE_UPDATE_BASELINE=1`. That is deliberately the same shape as a
+   * snapshot update rather than a `npx nplusone baseline` command: the findings
+   * only exist while the suite runs, so anything else would have to re-run the
+   * suite itself and guess at how.
+   *
+   * Entries the run never matched are reported at exit, so a baseline whose
+   * N+1s have since been fixed does not rot in silence. That report is a
+   * warning and never a failure.
+   */
+  baseline?: string;
+  /**
+   * Root that baseline paths are stored relative to. Default `process.cwd()`.
+   * Set it when the suite runs from somewhere other than the project root, or
+   * the file will only match on the machine that wrote it.
+   */
+  baselineRoot?: string;
 }
 
 /**
@@ -90,12 +131,21 @@ export interface AssertOptions extends Options {
  *   await expectNoNPlusOne(() => renderOrdersPage(userId));
  * });
  * ```
+ *
+ * On a codebase that already has N+1s, {@link AssertOptions.baseline} freezes
+ * the existing ones so the gate can be turned on today.
  */
 export async function expectNoNPlusOne(
   fn: () => unknown | Promise<unknown>,
   options: AssertOptions = {},
 ): Promise<CaptureResult> {
-  const { includeDuplicates = false, name = "this block", ...rest } = options;
+  const {
+    includeDuplicates = false,
+    name = "this block",
+    baseline,
+    baselineRoot,
+    ...rest
+  } = options;
 
   const result = await captureQueries(fn, { ...rest, name });
   // `too_many_queries` is never included, even with `includeDuplicates`: it is
@@ -106,8 +156,13 @@ export async function expectNoNPlusOne(
     (f) => f.type === "n_plus_one" || (includeDuplicates && f.type === "duplicate"),
   );
 
-  if (relevant.length > 0) {
-    throw new NPlusOneAssertionError(relevant, name);
+  // Known debt is forgiven; anything the file does not list still fails. In
+  // update mode this forgives everything and queues it for writing.
+  const unknown =
+    baseline === undefined ? relevant : applyBaseline(baseline, relevant, baselineRoot);
+
+  if (unknown.length > 0) {
+    throw new NPlusOneAssertionError(unknown, name);
   }
   return result;
 }

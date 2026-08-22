@@ -150,6 +150,15 @@ import { instrumentMysql2 } from "nplusone/mysql2";
 instrumentMysql2(mysql);
 ```
 
+**SQL Server** — covers `query()`, `batch()`, stored procedures and prepared statements:
+
+```ts
+import mssql from "mssql";
+import { instrumentMssql } from "nplusone/mssql";
+
+instrumentMssql(mssql);
+```
+
 **SQLite**:
 
 ```ts
@@ -295,6 +304,34 @@ Expected no N+1 queries in orders page, found 1:
 
 The helpers work whether or not the detector is enabled globally, and restore your configuration afterwards. They throw a plain `Error`, so **Jest, Vitest and `node:test` all report them correctly** with no plugin.
 
+### Adopting the gate on a codebase that already has N+1s
+
+`expectNoNPlusOne()` is all-or-nothing, which is right for a greenfield project and useless if you already have forty of them: the gate cannot be turned on at all, and a gate you cannot turn on protects nothing.
+
+A **baseline** freezes what exists today. Known findings pass, new ones fail:
+
+```ts
+await expectNoNPlusOne(() => renderOrdersPage(userId), {
+  baseline: ".nplusone-baseline.json",
+});
+```
+
+Write it by running the suite once with the file missing:
+
+```sh
+NPLUSONE_UPDATE_BASELINE=1 npm test
+```
+
+There is no `npx nplusone baseline` command, deliberately: findings only exist while your suite runs, so a CLI would have to re-run the suite and guess at how. This is the same shape as a snapshot update, which is a thing your team already knows.
+
+**What identifies a finding across runs** is the interesting decision, and it is normalized SQL + file + enclosing function name — *not* the line. Keying on `file:line` means every entry goes stale the moment somebody adds an import at the top of the file; keying on the SQL alone is too coarse to tell two loops apart. The function name survives a line shift and is already captured. The cost, stated plainly: two anonymous loops in one file issuing the same statement collapse into one entry. Name the function to separate them.
+
+The repetition **count** is recorded but never enforced. How far a loop runs depends on how much data the test set up, so failing on an increase would make the gate flaky — and a flaky gate gets switched off, which is the failure this feature exists to prevent. The count is there so the diff shows when debt grows.
+
+Entries that nothing matched are reported at exit, so a baseline whose N+1s were long since fixed does not rot in silence. That report is a **warning and never a failure**. In a runner that shards across worker processes it means "not matched in this process", so check it from a single-process run; `NPLUSONE_BASELINE_STALE=off` silences it.
+
+Update mode **merges and never removes**, for the same sharding reason — a worker that rewrote the file from what it saw would delete every other worker's entries. To prune, delete the file and regenerate.
+
 ## How it decides
 
 Inside a scope, two different problems get reported — and keeping them apart is the whole trick:
@@ -350,6 +387,42 @@ configure({ sampleValues: 5 });
 
 Values are truncated, and never shown for a duplicate finding — its parameters are identical by definition, so a sample of them says nothing.
 
+### Finding the "1" in N+1
+
+The line that repeats is only half the fix. The other half is the query that produced the rows being looped over, and the report guesses at it:
+
+```
+  N+1 query  50× SELECT * FROM order_items WHERE order_id = ?
+     at src/routes/orders.ts:38  (loadOrders)
+     after 1× SELECT * FROM orders WHERE user_id = ?
+           at src/routes/orders.ts:34  (loadOrders)
+     a guess — the one read just before the loop. Join these, or fetch
+     the children in one query, if they are in fact related.
+```
+
+It is a guess and it says so. A candidate is accepted only when it is the statement **immediately** before the loop's first query, it is a `select`, and it ran **exactly once** in the whole scope. Anything less and nothing is printed — a missing line costs you nothing, a wrong one sends you off to join two unrelated tables. The evidence that would settle it, whether the child's parameter came out of the parent's rows, is not available: this library never sees result rows.
+
+So it stays quiet when the ids came from a request body, a cache or another service, and when what precedes the loop is another loop. Turn it off with `detectParent: false`.
+
+### Reporting while it is still happening
+
+The report arrives when the scope closes. For a request that is soon enough. For a ten-minute background job it arrives at minute ten, and for a worker that never closes its scope it never arrives at all:
+
+```ts
+configure({ reportWhen: "immediately" });   // or "both", or "scope-close" (default)
+```
+
+```
+nplusone live in worker:reindex
+  N+1 query  ≥5× SELECT * FROM items WHERE order_id = ?
+     at src/jobs/reindex.ts:22  (reindexOrders)
+     still counting — the total is reported when the scope closes
+```
+
+**It cannot tell you the count and does not pretend to.** A finding is born when the threshold is crossed — at 5 repetitions of a loop that may run 50 times — so the number is a lower bound and is printed as one. `"immediately"` prints each finding once, at detection, and holds it out of the scope-close report so one problem does not read as two. `"both"` prints it again at close, where the count is final.
+
+This governs the built-in reporter. A custom `reporter` owns the output and is never printed behind; use `onFinding` for live handling alongside it.
+
 ## Configuration
 
 ```ts
@@ -357,6 +430,8 @@ configure({
   threshold: 5,            // distinct repetitions before it counts as N+1
   duplicateThreshold: 2,   // identical repetitions before it counts as duplicate
   mode: "warn",            // "warn" | "throw" | "silent"
+  reportWhen: "scope-close", // "scope-close" | "immediately" | "both"
+  detectParent: true,      // guess the query the loop iterates over
   statements: ["select"],  // restrict to certain statement kinds
   ignore: [/pg_catalog/],  // skip queries matching these
   captureStack: true,      // attribute queries to a line of code

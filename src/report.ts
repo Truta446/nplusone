@@ -50,12 +50,24 @@ function formatBudget(finding: Finding): string {
   return lines.join("\n");
 }
 
+export interface FormatOptions {
+  /**
+   * Render the count as a lower bound and say the loop may not be over.
+   *
+   * Set when printing at detection time. A finding is born the moment the
+   * threshold is crossed — at 5 repetitions of a loop that may run 50 times —
+   * and printing a flat `5×` for something that ended up running 50 times is
+   * misleading in a way that is worse than being late.
+   */
+  provisional?: boolean;
+}
+
 /** One finding as an indented block, without a trailing newline. */
-export function formatFinding(finding: Finding): string {
+export function formatFinding(finding: Finding, options: FormatOptions = {}): string {
   if (finding.type === "too_many_queries") return formatBudget(finding);
 
   const lines: string[] = [];
-  const times = c.bold(`${finding.count}×`);
+  const times = c.bold(options.provisional ? `≥${finding.count}×` : `${finding.count}×`);
 
   lines.push(`  ${headline(finding)}  ${times} ${truncateSql(finding.normalized)}`);
   lines.push(`     ${c.dim("at")} ${c.cyan(formatCallSite(finding.callsite))}`);
@@ -70,6 +82,19 @@ export function formatFinding(finding: Finding): string {
     lines.push(`     ${c.dim(`${finding.totalDurationMs.toFixed(1)}ms spent here`)}`);
   }
 
+  // The "1" in N+1, when there was a defensible candidate. Marked as a guess on
+  // its own line: a reader who acts on it should know what it rests on.
+  if (finding.parent !== undefined) {
+    lines.push(
+      `     ${c.dim("after")} ${c.bold("1×")} ${truncateSql(finding.parent.normalized, 88)}`,
+    );
+    lines.push(`     ${c.dim(`      at ${formatCallSite(finding.parent.callsite)}`)}`);
+    lines.push(
+      `     ${c.dim("a guess — the one read just before the loop. Join these, or fetch")}`,
+    );
+    lines.push(`     ${c.dim("the children in one query, if they are in fact related.")}`);
+  }
+
   if (finding.values !== undefined && finding.values.length > 0) {
     const shown = finding.values.join(", ");
     const rest = finding.count - finding.values.length;
@@ -81,6 +106,12 @@ export function formatFinding(finding: Finding): string {
   if (finding.type === "duplicate") {
     lines.push(
       `     ${c.dim("identical parameters — the repeats returned the same rows")}`,
+    );
+  }
+
+  if (options.provisional === true) {
+    lines.push(
+      `     ${c.dim("still counting — the total is reported when the scope closes")}`,
     );
   }
 
@@ -123,4 +154,20 @@ export function formatSummary(summary: ScopeSummary): string {
 
 export function defaultReporter(summary: ScopeSummary): void {
   process.stderr.write(`${formatSummary(summary)}\n\n`);
+}
+
+/**
+ * Prints one finding at the moment it was detected, for
+ * `reportWhen: "immediately"`.
+ *
+ * Deliberately not a summary: there is no scope total yet, and no list of
+ * findings to head. What it is, is one problem that has just started happening,
+ * with a count that is still going up — which the `≥` and the closing line say
+ * out loud rather than leaving the reader to infer.
+ */
+export function reportFindingNow(finding: Finding): void {
+  const header = `${c.bold("nplusone")} ${c.dim("live in")} ${c.bold(finding.scope)}`;
+  process.stderr.write(
+    `${header}\n${formatFinding(finding, { provisional: true })}\n\n`,
+  );
 }
