@@ -5,6 +5,104 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] — 2026-08-22
+
+### Added
+
+- **The "1" in N+1** (#26). The report named the query that repeats and not the
+  one that produced the rows being looped over — which is usually where the fix
+  goes. It now guesses at the parent, and says out loud that it is guessing:
+
+  ```
+    N+1 query  50× SELECT * FROM order_items WHERE order_id = ?
+       at src/routes/orders.ts:38  (loadOrders)
+       after 1× SELECT * FROM orders WHERE user_id = ?
+             at src/routes/orders.ts:34  (loadOrders)
+       a guess — the one read just before the loop. Join these, or fetch
+       the children in one query, if they are in fact related.
+  ```
+
+  A candidate is accepted only when it is the statement **immediately** before
+  the loop's first query, it is a `select`, and it ran **exactly once** in the
+  whole scope. Anything less and nothing is printed. The evidence that would
+  actually settle it — whether the child's parameter came out of the parent's
+  rows — is not available, because this library never sees result rows. So it
+  stays quiet when the ids came from a request body, a cache or another service,
+  and when what precedes the loop is another loop. `detectParent: false` turns
+  it off.
+
+- **`reportWhen`** (#24) — report an N+1 the moment it happens. The report
+  arrived when the scope closed, which for a request is soon enough, for a
+  ten-minute job is minute ten, and for a worker that never closes its scope is
+  never:
+
+  ```ts
+  configure({ reportWhen: "immediately" });   // or "both", or "scope-close"
+  ```
+
+  ```
+  nplusone live in worker:reindex
+    N+1 query  ≥5× SELECT * FROM items WHERE order_id = ?
+       at src/jobs/reindex.ts:22  (reindexOrders)
+       still counting — the total is reported when the scope closes
+  ```
+
+  **It cannot state a count and does not pretend to.** A finding is born when
+  the threshold is crossed — at 5 repetitions of a loop that may run 50 times —
+  so the number is a lower bound and prints as one. `"immediately"` prints each
+  finding once, at detection, and holds it out of the scope-close report so one
+  problem does not read as two; `"both"` prints it again at close, where the
+  count is final. A custom `reporter` owns the output and is never printed
+  behind — use `onFinding` for live handling alongside it.
+
+- **Baselines** (#17), so a codebase that already has forty N+1s can turn the CI
+  gate on today. `expectNoNPlusOne()` was all-or-nothing, and a gate you cannot
+  turn on protects nothing:
+
+  ```ts
+  await expectNoNPlusOne(() => renderOrdersPage(userId), {
+    baseline: ".nplusone-baseline.json",
+  });
+  ```
+
+  Written — and added to later — with `NPLUSONE_UPDATE_BASELINE=1 npm test`.
+  There is no `npx nplusone baseline` command on purpose: findings only exist
+  while your suite runs, so a CLI would have to re-run the suite and guess at
+  how, where a snapshot-style update is a thing your team already knows.
+
+  The design decision worth arguing with is the key: **normalized SQL + file +
+  enclosing function name**, deliberately not the line. `file:line` stales every
+  entry at once the moment anyone adds an import; the SQL alone cannot tell two
+  loops apart. The known cost is that two anonymous loops in one file issuing
+  the same statement collapse into one entry — name the function to separate
+  them.
+
+  The repetition count is **recorded but never enforced**. How far a loop runs
+  depends on how much data the test set up, so failing on an increase makes the
+  gate flaky, and a flaky gate gets switched off. Update mode **merges and never
+  removes**: a sharded runner's worker rewriting the file from what it saw would
+  delete every other worker's entries. Unmatched entries are reported at exit as
+  a warning, never a failure, and the warning states that caveat.
+
+- **SQL Server** (`mssql`) is now a supported driver (#29, closes #20). Thanks
+  to @milekv for the adapter.
+
+  Three things were added on top of it. `Request.prototype.batch()` was not
+  patched, so a T-SQL batch went unrecorded. `PreparedStatement` was not either
+  — executing one in a loop is an N+1 that costs less per iteration and is
+  therefore easier to miss — and its statement is captured at `prepare()` rather
+  than read off an internal property, so a rename in the driver cannot silently
+  break it. And a request with no `.input()` calls reported `params: []` rather
+  than nothing, which handed the detector a discriminator that was identical on
+  every iteration: a loop building its SQL by interpolation, the code most
+  likely to have an N+1 in it, was never reported.
+
+### Changed
+
+- `Finding` carries a `parent` field. If you build a `Finding` literal in
+  TypeScript — a custom reporter's tests, most likely — it needs
+  `parent: undefined`, the same as `breakdown` and `values` already did.
+
 ## [0.7.0] — 2026-08-21
 
 ### Fixed
