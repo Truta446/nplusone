@@ -91,6 +91,7 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **PostgreSQL** (`pg`) | `instrumentPg(pg)` | ✅ |
 | **PostgreSQL** (`postgres.js`) | `instrumentPostgresJs(sql)` | ✅ |
 | **MySQL / MariaDB** (`mysql2`) | `instrumentMysql2(mysql)` | ✅ |
+| **SQL Server** (`mssql`) | `instrumentMssql(mssql)` | ✅ |
 | **SQLite** (`better-sqlite3`) | `instrumentBetterSqlite3(Database)` | ✅ |
 | **SQLite** (`node:sqlite`) | `instrumentNodeSqlite(sqlite)` | ✅ |
 | **libSQL / Turso** (`@libsql/client`) | `instrumentLibsql(client)` | ✅ |

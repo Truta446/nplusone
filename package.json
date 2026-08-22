@@ -72,6 +72,12 @@
       "require": "./dist/adapters/mysql2.js",
       "default": "./dist/adapters/mysql2.js"
     },
+    "./mssql": {
+      "types": "./dist/adapters/mssql.d.ts",
+      "import": "./dist/adapters/mssql.js",
+      "require": "./dist/adapters/mssql.js",
+      "default": "./dist/adapters/mssql.js"
+    },
     "./sqlite": {
       "types": "./dist/adapters/sqlite.d.ts",
       "import": "./dist/adapters/sqlite.js",
