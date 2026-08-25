@@ -74,6 +74,12 @@ export interface Observation {
   sql: string;
   params?: readonly unknown[] | undefined;
   kind?: StatementKind | undefined;
+  /**
+   * A statement the adapter has already normalized. Non-SQL adapters set this
+   * so SQL normalization does not rewrite a Redis key or a request path — see
+   * `RecordInput.normalized`.
+   */
+  normalized?: string | undefined;
 }
 
 /** What a driver adapter knows about where a query came from. */
@@ -163,7 +169,15 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
  * Drivers report no per-statement timing for a batch, so the round trip is
  * divided evenly. Each statement's duration is an estimate; the **sum**, which
  * is what a finding reports, is the measurement.
+ *
+ * The batch is also given an id, which is what stops it being reported as an
+ * N+1. An N+1 counts round trips; a batch is one. Fifty pipelined reads share
+ * one id and count as a single repetition — while fifty batches issued from a
+ * loop still count as fifty, which is the case that is genuinely worth
+ * catching. See `RecordInput.batchId`.
  */
+let batchCounter = 0;
+
 export function observeBatch<T>(
   observations: readonly Observation[],
   execute: () => T,
@@ -171,6 +185,7 @@ export function observeBatch<T>(
   if (observations.length === 0) return execute();
 
   const { callsite, builtAt } = originNow();
+  const batchId = ++batchCounter;
   const started = performance.now();
 
   const commit = (): void => {
@@ -180,9 +195,11 @@ export function observeBatch<T>(
         sql: observation.sql,
         params: observation.params,
         kind: observation.kind,
+        normalized: observation.normalized,
         callsite,
         builtAt,
         durationMs: each,
+        batchId,
       });
     }
   };
@@ -237,6 +254,7 @@ export function observe<T>(observation: Observation, execute: () => T): T {
       sql: observation.sql,
       params: observation.params,
       kind: observation.kind,
+      normalized: observation.normalized,
       callsite,
       builtAt,
       durationMs: performance.now() - started,

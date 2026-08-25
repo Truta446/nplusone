@@ -1,6 +1,6 @@
 {
   "name": "nplusone",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Catch N+1 queries in Node.js at runtime. ORM-agnostic, zero dependencies, fails your CI before it reaches production.",
   "keywords": [
     "n+1",
@@ -23,7 +23,13 @@
     "mongodb",
     "postgres.js",
     "mssql",
-    "sqlserver"
+    "sqlserver",
+    "oracle",
+    "oracledb",
+    "redis",
+    "ioredis",
+    "opensearch",
+    "elasticsearch"
   ],
   "license": "MIT",
   "author": "Juan Versolato <juan.versolato@outlook.com>",
@@ -110,6 +116,24 @@
       "require": "./dist/adapters/mongodb.js",
       "default": "./dist/adapters/mongodb.js"
     },
+    "./oracledb": {
+      "types": "./dist/adapters/oracledb.d.ts",
+      "import": "./dist/adapters/oracledb.js",
+      "require": "./dist/adapters/oracledb.js",
+      "default": "./dist/adapters/oracledb.js"
+    },
+    "./ioredis": {
+      "types": "./dist/adapters/ioredis.d.ts",
+      "import": "./dist/adapters/ioredis.js",
+      "require": "./dist/adapters/ioredis.js",
+      "default": "./dist/adapters/ioredis.js"
+    },
+    "./opensearch": {
+      "types": "./dist/adapters/opensearch.d.ts",
+      "import": "./dist/adapters/opensearch.js",
+      "require": "./dist/adapters/opensearch.js",
+      "default": "./dist/adapters/opensearch.js"
+    },
     "./package.json": "./package.json",
     "./drizzle": {
       "types": "./dist/adapters/drizzle.d.ts",
@@ -130,7 +154,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
+    "@opensearch-project/opensearch": "^3.6.0",
     "@types/node": "^26.1.2",
+    "ioredis": "^6.0.0",
     "kysely": "^0.29.5",
     "typescript": "^7.0.2"
   }

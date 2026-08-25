@@ -58,7 +58,8 @@ It is invisible in development against a seeded database with three rows, and it
 npm install --save-dev nplusone
 ```
 
-Tested on Node **18, 20, 22 and 24**.
+Tested on Node **18, 20, 22 and 24**, and on **Deno** and **Bun** — see
+[Runtimes](#runtimes) for what each one does with attribution.
 
 The package is ESM. `import` works on every version above; `require()` works
 from Node 20.19 onwards, which is where Node backported requiring an ES module.
@@ -92,10 +93,13 @@ Because the detector hooks the **driver**, every query builder and ORM on top of
 | **PostgreSQL** (`postgres.js`) | `instrumentPostgresJs(sql)` | ✅ |
 | **MySQL / MariaDB** (`mysql2`) | `instrumentMysql2(mysql)` | ✅ |
 | **SQL Server** (`mssql`) | `instrumentMssql(mssql)` | ✅ |
+| **Oracle** (`oracledb`) | `instrumentOracle(oracledb)` | ✅ |
 | **SQLite** (`better-sqlite3`) | `instrumentBetterSqlite3(Database)` | ✅ |
 | **SQLite** (`node:sqlite`) | `instrumentNodeSqlite(sqlite)` | ✅ |
 | **libSQL / Turso** (`@libsql/client`) | `instrumentLibsql(client)` | ✅ |
 | **MongoDB** | `instrumentMongodb(mongodb)` | ✅ |
+| **Redis** (`ioredis`) | `instrumentIoredis(Redis)` | ✅ |
+| **OpenSearch / Elasticsearch** | `instrumentOpenSearch(client)` | ✅ |
 | **Prisma** | `instrumentPrisma(client)` | ✅ |
 | **Drizzle** | driver **+** `instrumentDrizzle(db)` | ✅ |
 | **Knex** | via its driver | ✅ |
@@ -157,6 +161,34 @@ import mssql from "mssql";
 import { instrumentMssql } from "nplusone/mssql";
 
 instrumentMssql(mssql);
+```
+
+**Oracle** — `execute`, `executeMany` and `queryStream`, pooled or not:
+
+```ts
+import oracledb from "oracledb";
+import { instrumentOracle } from "nplusone/oracledb";
+
+instrumentOracle(oracledb);
+```
+
+**Redis** — a loop of `GET`s is the same bug as a loop of `SELECT`s:
+
+```ts
+import Redis from "ioredis";
+import { instrumentIoredis } from "nplusone/ioredis";
+
+instrumentIoredis(Redis);
+```
+
+**OpenSearch / Elasticsearch** — patches the transport, so every API method is covered:
+
+```ts
+import { Client } from "@opensearch-project/opensearch";
+import { instrumentOpenSearch } from "nplusone/opensearch";
+
+const client = new Client({ node: process.env.OPENSEARCH_URL });
+instrumentOpenSearch(client);
 ```
 
 **SQLite**:
@@ -332,6 +364,18 @@ Entries that nothing matched are reported at exit, so a baseline whose N+1s were
 
 Update mode **merges and never removes**, for the same sharding reason — a worker that rewrote the file from what it saw would delete every other worker's entries. To prune, delete the file and regenerate.
 
+### Batches are one round trip, not N queries
+
+An N+1 counts **round trips**. A pipeline, an `executeMany`, an `_msearch` — these are the *fix*, and reporting them as the bug would argue against the exact thing you want people to write:
+
+```ts
+const pipeline = redis.pipeline();
+for (const id of ids) pipeline.get(`product:${id}`);
+await pipeline.exec();          // one round trip — not a finding
+```
+
+Every statement in one batch shares a discriminator, so fifty of them count as one repetition. A loop *of* batches still counts as a loop, which is the case genuinely worth catching. The statements are all still recorded and still count towards `maxQueries` — "this scope does too much work" is a budget question, and the budget is where it belongs.
+
 ## How it decides
 
 Inside a scope, two different problems get reported — and keeping them apart is the whole trick:
@@ -471,6 +515,35 @@ driver.execute = async function (sql, params) {
 npm test          # 177 tests, including real queries against node:sqlite
 npm run coverage  # 80% lines, 83% branches
 ```
+
+## Runtimes
+
+The suite runs on all three in CI, so this table does not rot.
+
+| Runtime | Detection | Attribution | |
+| --- | --- | --- | :--: |
+| **Node** 18 – 24 | ✅ | ✅ | ✅ |
+| **Deno** 2.x | ✅ | ✅ | ✅ |
+| **Bun** 1.3 | ✅ | mostly — see below | ⚠️ |
+
+**Deno** passes the whole suite. It source-maps `Error.stack`, which used to
+break attribution outright: this library's own frames arrived named
+`src/callsite.ts` while the files on disk were `dist/callsite.js`, so they were
+not recognised as ours and *every* finding was blamed on the library's own
+internals. Fixed in 0.9.0 by asking the runtime what it calls this file rather
+than guessing from the build layout.
+
+**Bun** detects N+1s correctly and attributes them correctly in ordinary code.
+The caveat is JavaScriptCore rather than Bun: it eliminates a stack frame in two
+cases V8 keeps — a call in **tail position** (`return db.query(...)` as the last
+statement, which is ES6 proper tail calls) and a function small enough to be
+**inlined**. When either happens the frame does not exist to be read, and the
+report names the *caller* instead. In practice this hits thin one-line wrappers;
+a handler or repository method that does real work keeps its frame. Nothing here
+can fix that, so it is measured and stated instead.
+
+Also on Bun: `node:sqlite` is not implemented in 1.3, so `instrumentNodeSqlite`
+has nothing to instrument. `better-sqlite3` is unaffected.
 
 ## Cost
 

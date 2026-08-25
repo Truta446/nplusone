@@ -5,3 +5,6 @@ dist-test/
 .DS_Store
 npm-debug.log*
 PROMOTION.md
+
+# Deno writes this when running the suite; the package has no Deno deps.
+deno.lock

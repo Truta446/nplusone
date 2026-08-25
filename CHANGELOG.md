@@ -5,6 +5,116 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-08-25
+
+### Changed
+
+- **A batch is no longer reported as an N+1** — the one behaviour change in this
+  release, and worth reading before upgrading.
+
+  An N+1 counts **round trips**. A pipeline, an `executeMany`, a libSQL
+  `batch()` — these are the *fix*. Until now a `batch()` of six identical-shape
+  statements produced an N+1 finding, which meant that fixing an N+1 the way the
+  driver exists to let you fix it left the finding in place: the tool argued
+  against its own advice and could not be used as a gate on the fix.
+
+  Every statement in one batch now shares a discriminator, so fifty of them
+  count as one repetition. A loop *of* batches still counts as a loop, which is
+  the case genuinely worth catching. The statements are all still recorded and
+  still count towards `maxQueries` — "this scope does too much work" is a budget
+  question, and `expectQueryCount()` is the assertion for it.
+
+  If you were relying on the old reading, that finding will disappear on
+  upgrade. `test/libsql.test.ts` carries the reversal and the reasoning.
+
+### Added
+
+- **Oracle** (#30). `nplusone/oracledb`, covering `execute`, `executeMany` and
+  `queryStream`, pooled or not.
+
+  `node-oracledb` does not export its `Connection` class, so there is nothing to
+  patch at import time. The two functions that hand out connections are wrapped
+  instead, and the first connection to come back is used to reach the prototype
+  they all share — which is also what keeps a pooled query from being counted
+  twice, since only the connection records.
+
+  Oracle's one trap is handled: an anonymous PL/SQL block starts with `BEGIN`,
+  which the shared classifier reads as transaction control, and transaction
+  control is dropped before it ever reaches a scope. A PL/SQL block running once
+  per row would have gone missing entirely and silently. `COMMIT` still
+  classifies as control.
+
+- **Redis** (#31). `nplusone/ioredis`. One round trip per item in a loop is the
+  same bug against a cache as against a database, and it hides better there
+  because each call is fast enough that nobody notices until the list gets long.
+
+  The design decision the adapter turns on is what a "statement" is. Report the
+  key verbatim and nothing ever groups; report the command alone and every read
+  in the request collapses into one useless finding. So `:` is the delimiter and
+  a segment that is all digits, or a long hex or UUID token, becomes `*` —
+  `user:42:sessions` reads as `user:*:sessions`. Its limit, stated rather than
+  papered over: a key that does not use `:` is left alone, so a loop over
+  `abc1`, `abc2` goes unreported. Inventing a segmenting rule for arbitrary key
+  names would be guessing at someone else's convention.
+
+  Pipelines and `multi()` are recorded as one batch. That needed care:
+  `Pipeline.exec()` sends each queued command back through the client, so
+  patching only `sendCommand` would have counted a pipeline of fifty `GET`s
+  twice over *and* reported it as an N+1.
+
+  `node-redis` (the `redis` package) has a different client API and no funnel of
+  this shape; it would need its own module.
+
+- **OpenSearch and Elasticsearch**. `nplusone/opensearch`, for the loop that
+  runs one `_search` or one `_doc` fetch per hit of the search above it.
+
+  The client builds its API as own properties on each instance, so there is no
+  prototype holding them — but there is exactly one funnel underneath,
+  `transport.request`, and every `search`, `get`, `index` and `bulk` ends there.
+  That also means `_msearch`, `_mget` and `_bulk` arrive as a single observation
+  for free, which is what they genuinely are on the wire.
+
+  Paths are normalized positionally — the segment after `_doc`, `_update` and
+  friends is an id — and the raw path and request body go back in as values.
+  Both halves are needed: without normalization a fetch-by-id loop never groups,
+  and without the body a `_search`-per-item loop has nothing that varies, which
+  is the most common shape of this bug against a search engine.
+
+### Fixed
+
+- **Every finding on Deno was blamed on this library's own internals** (#27).
+  Deno applies source maps to `Error.stack`, so nplusone's frames arrived named
+  `src/callsite.ts` while the files on disk were `dist/callsite.js`. They were
+  not recognised as ours, the first one was taken for application code, and the
+  report pointed at `src/callsite.ts` every single time — arriving with no sign
+  that anything was wrong.
+
+  The library now asks the runtime what it calls this file, by reading one frame
+  of its own stack at load, instead of guessing from the build layout. Deno
+  2.9.5 passes the full suite; there is a CI job so it stays that way.
+
+- **A Redis key or a request path was mangled in the report.** `normalizeSql()`
+  is SQL-specific and was applied to every recorded statement, so `:sessions` in
+  a key read as a named bind and became `?`, and the `/*` of a wildcarded path
+  opened a block comment that ate the rest of the line. Both still *grouped*,
+  being deterministic — they just stopped being readable, in the one line of the
+  report the reader is meant to act on. An adapter can now supply its own
+  normalized form.
+
+### Measured
+
+- **Bun and Deno** (#27), the answer the README could not previously give.
+
+  Deno 2.x: the full suite, after the fix above. Bun 1.3: detection is correct
+  and so is attribution in ordinary code, but JavaScriptCore eliminates a stack
+  frame in two cases V8 keeps — a call in **tail position** (ES6 proper tail
+  calls) and a function small enough to be **inlined**. When either happens the
+  frame does not exist to be read and the report names the caller. It hits thin
+  one-line wrappers; a function that does real work keeps its frame. Nothing in
+  this library can fix that, so it is measured, pinned by a test, and stated in
+  the README's runtime table. `node:sqlite` is also unimplemented in Bun 1.3, so
+  `instrumentNodeSqlite` has nothing to instrument there.
+
 ## [0.8.0] — 2026-08-22
 
 ### Added

@@ -136,7 +136,19 @@ test("records each statement in a batch separately", async () => {
 
   restore();
   assert.equal(client.batchCalls, 1, "one batch remains one driver call");
-  assert.equal(findings.filter((finding) => finding.type === "n_plus_one").length, 1);
+
+  // Deliberately reversed in 0.9.0. Until then a batch of six was reported as
+  // an N+1, which meant that fixing an N+1 the way `batch()` exists to let you
+  // fix it left the finding in place — so the tool argued against its own
+  // advice and could not be used as a gate on the fix. An N+1 counts round
+  // trips, and a batch is one. The statements are all still recorded and still
+  // count towards `maxQueries`, which is where "this scope does too much work"
+  // belongs.
+  assert.equal(
+    findings.filter((finding) => finding.type === "n_plus_one").length,
+    0,
+    "one batch is one round trip, so it is not an N+1",
+  );
 });
 
 test("restore stops recording", async () => {
